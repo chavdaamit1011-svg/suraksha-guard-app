@@ -3,13 +3,28 @@ import * as Crypto from 'expo-crypto';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { KEYS, secure } from './storage';
+import { browserDeviceId } from './browserDevice';
+
+let deviceIdPromise: Promise<string> | null = null;
 
 /**
  * Device binding (PRD 18.1 §9): one active device per guard account. We derive a stable,
  * app-generated install id (keystore-backed via SecureStore) combined with the platform
  * install id, and send it on auth + every attendance event.
  */
-export async function getDeviceId(): Promise<string> {
+export function getDeviceId(): Promise<string> {
+  // Hydration and polling can run together; they must share one generated identity.
+  deviceIdPromise ??= loadDeviceId().catch((error) => {
+    deviceIdPromise = null;
+    throw error;
+  });
+  return deviceIdPromise;
+}
+
+async function loadDeviceId(): Promise<string> {
+  if (Platform.OS === 'web') {
+    return browserDeviceId(globalThis.localStorage, globalThis.sessionStorage, () => `web.${Crypto.randomUUID()}`);
+  }
   const existing = await secure.get(KEYS.deviceId);
   if (existing) return existing;
 

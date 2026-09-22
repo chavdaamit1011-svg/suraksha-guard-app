@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 import { encryptedStore } from './secureStore';
 
 /**
@@ -15,6 +16,7 @@ import { encryptedStore } from './secureStore';
 export const secure = {
   async get(key: string) {
     try {
+      if (Platform.OS === 'web') return globalThis.sessionStorage?.getItem(key) ?? null;
       return await SecureStore.getItemAsync(key);
     } catch {
       return null;
@@ -22,6 +24,10 @@ export const secure = {
   },
   async set(key: string, value: string) {
     try {
+      if (Platform.OS === 'web') {
+        globalThis.sessionStorage?.setItem(key, value);
+        return;
+      }
       await SecureStore.setItemAsync(key, value);
     } catch {
       /* ignore */
@@ -29,6 +35,10 @@ export const secure = {
   },
   async del(key: string) {
     try {
+      if (Platform.OS === 'web') {
+        globalThis.sessionStorage?.removeItem(key);
+        return;
+      }
       await SecureStore.deleteItemAsync(key);
     } catch {
       /* ignore */

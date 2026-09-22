@@ -12,3 +12,5 @@ keystore.properties
 .env
 .env.*
 .budget-run*.json
+backend-additions/local-login-backup-*/
+backend-additions/local-duty-backup-*/

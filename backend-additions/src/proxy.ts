@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { SUBJECT_HEADER, actorIds, gateGuardApi } from '@/lib/guardSession';
+import { guardCorsHeaders } from '@/lib/guardCors';
 
 /**
  * Guard app API gate (see src/lib/guardSession.ts). Checks the session token against the guard
@@ -28,7 +29,13 @@ export async function proxy(req: NextRequest) {
   const hostname = req.headers.get('host') || '';
 
   if (pathname.startsWith('/api/guard/')) {
-    return guardApiGate(req, pathname);
+    const cors = guardCorsHeaders(req.headers.get('origin'));
+    const response = req.method === 'OPTIONS'
+      ? new NextResponse(null, { status: cors ? 204 : 403 })
+      : await guardApiGate(req, pathname);
+    response.headers.append('Vary', 'Origin');
+    for (const [key, value] of Object.entries(cors ?? {})) response.headers.set(key, value);
+    return response;
   }
 
   // API calls and static assets MUST pass through directly without subdomain rewrites/redirects

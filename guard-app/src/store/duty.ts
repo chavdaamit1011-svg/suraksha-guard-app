@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api, type CurrentAssignment, type DutyAlert, type DutyBundle, type TimelineItem } from '@/lib/api';
+import { api, ApiError, type CurrentAssignment, type DutyAlert, type DutyBundle, type TimelineItem } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { computeDuty, type LocalDuty } from '@/lib/duty';
 import { setDutyLocationSink } from '@/lib/dutyTracking';
@@ -124,6 +124,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
         timeline: cached.timeline ?? [],
         alerts: cached.alerts ?? [],
         booking: (cached.booking as Booking) ?? null,
+        online: !!cached.guard?.isOnline,
         duty: computeDuty(cached.current),
         hydrated: true,
       });
@@ -171,6 +172,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
         timeline: bundle.timeline ?? [],
         alerts: bundle.alerts ?? [],
         booking: (bundle.booking as Booking) ?? null,
+        online: !!bundle.guard?.isOnline,
         // The server's verdict wins the moment it arrives.
         duty: bundle.current?.duty ?? computeDuty(bundle.current),
         offline: false,
@@ -202,7 +204,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
     } catch (e: any) {
       // Offline is a normal state, not an error (PRD 18.17.1 rule 15). Fall back to the cache
       // and keep the local state machine running.
-      set({ offline: true, lastError: e?.message ?? 'offline' });
+      set({ offline: !(e instanceof ApiError), lastError: e?.message ?? 'offline' });
       if (!get().bundle) await get().hydrateBundle();
       set({ duty: computeDuty(get().current) });
     }

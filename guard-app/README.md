@@ -10,6 +10,26 @@ Talks to the existing production backend (the Next.js app behind `guards.suraksh
 - i18n: Hindi default + English, 21-language picker (`src/i18n`)
 
 ## Run in development
+
+For browser development against the sibling `suraksha-app` on port 4545, the backend
+must have the guard OTP routes installed. From the repository root, preview the
+local login integration with `powershell -ExecutionPolicy Bypass -File backend-additions/apply-local-login.ps1`;
+add `-Apply` to install it with backups. This installs the login/session routes,
+version/i18n endpoints, and guard API CORS support while preserving portal routing.
+Install the duty home bundle and its dependencies separately with
+`powershell -ExecutionPolicy Bypass -File backend-additions/apply-local-duty.ps1 -Apply`.
+This enables dispatched booking offers and roster data on the home screen; the remaining
+duty APIs require the full backend deployment. Legacy AP phone formatting is matched
+at login without changing or duplicating the guard record.
+
+Development CORS permits `http://localhost:8081` and `http://127.0.0.1:8081`.
+Additional browser origins can be listed in backend `GUARD_WEB_ORIGINS` (comma separated).
+On web, login/PIN state uses tab-scoped session storage and survives refresh.
+The browser device ID uses persistent local storage, migrating an existing tab's ID,
+so closing a tab does not request approval for a new device on the next login;
+native builds continue to use SecureStore. With no SMS provider configured on a
+development backend, the OTP is returned for auto-fill rather than sent by SMS.
+
 ```
 cd guard-app
 npx expo start          # then scan the QR with Expo Go, or press a for an emulator

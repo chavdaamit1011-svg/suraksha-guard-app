@@ -4,6 +4,7 @@ import { APGuard } from '@/lib/models/APGuard';
 import { GuardAppProfile } from '@/lib/models/GuardAppProfile';
 import { consumeOtp, normPhone } from '@/lib/guardOtp';
 import { issueRegisterTicket, issueSession } from '@/lib/guardSession';
+import { guardPhonePattern } from '@/lib/guardPhone';
 
 /**
  * Guard phone OTP — verify (PRD 18.1). On success: if the guard exists, evaluate device binding
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
     }
 
     await connectToDatabase();
-    const guard = await APGuard.findOne({ phone: key });
+    const guard = await APGuard.findOne({ phone: guardPhonePattern(key) }).sort({ createdAt: -1 });
     if (!guard) {
       return NextResponse.json({ success: true, verified: true, exists: false, registerTicket: await issueRegisterTicket(key) });
     }

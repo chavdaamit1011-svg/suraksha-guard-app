@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { GuardNotification } from '@/lib/models/GuardNotification';
 import { GuardAppProfile } from '@/lib/models/GuardAppProfile';
 import { normPhone } from '@/lib/guardOtp';
+import { guardPhonePattern } from '@/lib/guardPhone';
 import { issueSession, readRegisterTicket, sessionRequired } from '@/lib/guardSession';
 
 /**
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
     await connectToDatabase();
 
     // Check if already exists
-    const existingGuard = await APGuard.findOne({ phone });
+    const existingGuard = await APGuard.findOne({ phone: guardPhonePattern(phone) });
     if (existingGuard) {
       return NextResponse.json({ success: false, message: 'Phone number already registered' }, { status: 409 });
     }
