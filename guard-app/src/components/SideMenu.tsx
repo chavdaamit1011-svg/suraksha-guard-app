@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, Dimensions, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '@/i18n';
 import { useAuth } from '@/store/auth';
@@ -54,6 +54,13 @@ export function SideMenu({ open, onClose }: { open: boolean; onClose: () => void
 
   const logout = () => {
     onClose();
+    if (Platform.OS === 'web') {
+      const ok = typeof window !== 'undefined' ? window.confirm(`${t('profile.logoutTitle')}\n\n${t('profile.logoutBody')}`) : true;
+      if (ok) {
+        useAuth.getState().logout().then(() => router.replace('/login'));
+      }
+      return;
+    }
     Alert.alert(t('profile.logoutTitle'), t('profile.logoutBody'), [
       { text: t('common.cancel'), style: 'cancel' },
       {
