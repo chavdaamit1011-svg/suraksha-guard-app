@@ -47,7 +47,15 @@
         "SCHEDULE_EXACT_ALARM",
         "NFC",
         "SEND_SMS",
-        "CALL_PHONE"
+        "CALL_PHONE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "web": {
@@ -104,8 +112,10 @@
       "apiBaseUrl": "https://guards.surakshaguards.in",
       "socketUrl": "https://guards.surakshaguards.in",
       "eas": {
-        "projectId": ""
-      }
-    }
+        "projectId": "78841d40-89cf-4136-9de8-89c3b941d8ad"
+      },
+      "router": {}
+    },
+    "owner": "chavdaamit111"
   }
 }
