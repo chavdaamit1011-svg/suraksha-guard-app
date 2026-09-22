@@ -1,0 +1,25 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'in.surakshaguards.guard'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.guardnative"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  // SMS Retriever: reads the OTP message addressed to this app without any SMS permission.
+  implementation 'com.google.android.gms:play-services-auth-api-phone:18.1.0'
+  implementation 'androidx.core:core-ktx:1.13.1'
+  // On-device face detection for selfie quality. The Play-services variant: the model is
+  // downloaded once by Google Play services instead of being bundled, which keeps ~15 MB (two CPU
+  // architectures) out of the APK. Works offline once downloaded.
+  implementation 'com.google.android.gms:play-services-mlkit-face-detection:17.1.0'
+}

@@ -1,0 +1,111 @@
+{
+  "expo": {
+    "name": "Suraksha Guard",
+    "slug": "suraksha-guard",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "surakshaguard",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B0D0F",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "in.surakshaguards.guard",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Suraksha Guard uses your location to verify duty check-in and share your live position with your supervisor during a shift.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Suraksha Guard tracks your location during an active duty so your site and supervisor can confirm you are on post.",
+        "NSCameraUsageDescription": "Suraksha Guard uses the camera for selfie check-in, patrol checkpoint scans and incident photos.",
+        "NSMicrophoneUsageDescription": "Suraksha Guard records short voice notes for incidents when you choose to.",
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "remote-notification"
+        ]
+      }
+    },
+    "android": {
+      "package": "in.surakshaguards.guard",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0D0F",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "VIBRATE",
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED",
+        "WAKE_LOCK",
+        "USE_EXACT_ALARM",
+        "SCHEDULE_EXACT_ALARM",
+        "NFC",
+        "SEND_SMS",
+        "CALL_PHONE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-localization",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Suraksha Guard tracks your location during an active duty so your site and supervisor can confirm you are on post.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Suraksha Guard uses the camera for selfie check-in, patrol scans and incident photos."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#F5C623"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0B0D0F"
+        }
+      ],
+      "expo-audio",
+      "expo-sharing"
+    ],
+    "extra": {
+      "apiBaseUrl": "https://guards.surakshaguards.in",
+      "socketUrl": "https://guards.surakshaguards.in",
+      "eas": {
+        "projectId": ""
+      }
+    }
+  }
+}

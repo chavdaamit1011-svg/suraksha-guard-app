@@ -1,0 +1,26 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- NFC checkpoint tags (PRD 18.7). Not required: phones without NFC fall back to QR. -->
+  <uses-permission android:name="android.permission.NFC" />
+  <uses-feature android:name="android.hardware.nfc" android:required="false" />
+  <!-- SOS rungs 5-7 (PRD 18.9 §9). Declared in app.json as well; requested at run time. -->
+  <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
+  <!-- Wake-check alarms (PRD 18.8): exact alarm, full-screen over the lock screen, re-armed after boot. -->
+  <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+  <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+  <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.VIBRATE" />
+
+  <application>
+    <receiver android:name="expo.modules.guardnative.GuardAlarmReceiver" android:exported="false" />
+    <receiver android:name="expo.modules.guardnative.GuardBootReceiver" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+        <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+      </intent-filter>
+    </receiver>
+  </application>
+</manifest>

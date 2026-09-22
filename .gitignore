@@ -1,0 +1,14 @@
+node_modules/
+.expo/
+dist/
+web-build/
+guard-app/android/
+guard-app/ios/
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+.env
+.env.*
+.budget-run*.json
