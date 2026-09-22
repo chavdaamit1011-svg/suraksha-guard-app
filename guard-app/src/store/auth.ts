@@ -63,6 +63,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     // The server ended this login (logged out elsewhere, phone unlinked): sign out locally.
     onSignedOut(() => {
       secure.del(KEYS.guard).catch(() => {});
+      store.del(KEYS.todayBundle).catch(() => {});
+      stopDutyTracking().catch(() => {});
       set({ guard: null, needsPin: false });
     });
     const raw = await secure.get(KEYS.guard);

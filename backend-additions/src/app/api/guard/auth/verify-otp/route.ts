@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
-import { APGuard } from '@/lib/models/APGuard';
 import { GuardAppProfile } from '@/lib/models/GuardAppProfile';
 import { consumeOtp, normPhone } from '@/lib/guardOtp';
-import { issueRegisterTicket, issueSession } from '@/lib/guardSession';
-import { guardPhonePattern } from '@/lib/guardPhone';
+import { issueSession } from '@/lib/guardSession';
+import { activeGuardByPhone, guardRemoved } from '@/lib/guardAccess';
 
 /**
  * Guard phone OTP — verify (PRD 18.1). On success: if the guard exists, evaluate device binding
@@ -12,9 +11,7 @@ import { guardPhonePattern } from '@/lib/guardPhone';
  * later request. A new device does not hard-block login; it flags a pending device change so an
  * Operations Manager can approve, per canon (never block duty).
  *
- * For a phone with no guard yet, it returns a short-lived **registration ticket** instead, which
- * `/api/guard/auth/register` requires — so an account can only be created for a phone whose OTP
- * was actually received.
+ * Only current AP/Ops guard records may sign in. Unknown/deleted accounts cannot self-register.
  */
 export async function POST(req: Request) {
   try {
@@ -29,9 +26,9 @@ export async function POST(req: Request) {
     }
 
     await connectToDatabase();
-    const guard = await APGuard.findOne({ phone: guardPhonePattern(key) }).sort({ createdAt: -1 });
+    const guard = await activeGuardByPhone(key);
     if (!guard) {
-      return NextResponse.json({ success: true, verified: true, exists: false, registerTicket: await issueRegisterTicket(key) });
+      return NextResponse.json(guardRemoved, { status: 401 });
     }
 
     const gid = guard._id.toString();

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { connectToDatabase } from '@/lib/db';
-import { APGuard } from '@/lib/models/APGuard';
+import { activeGuardById, guardRemoved } from '@/lib/guardAccess';
 import { GuardAppProfile } from '@/lib/models/GuardAppProfile';
 import { bearer, issueSession, readRefreshable } from '@/lib/guardSession';
 
@@ -24,11 +24,11 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
     const [guard, profile]: any[] = await Promise.all([
-      APGuard.findById(old.g).select('_id status').lean(),
+      activeGuardById(old.g),
       GuardAppProfile.findOne({ guardId: old.g }).select('sessionVersion boundDeviceId').lean(),
     ]);
     if (!guard) {
-      return NextResponse.json({ success: false, code: 'session_invalid', message: 'Please sign in again.' }, { status: 401 });
+      return NextResponse.json(guardRemoved, { status: 401 });
     }
     if ((profile?.sessionVersion ?? 0) !== old.v) {
       return NextResponse.json({ success: false, code: 'session_revoked', message: 'You were signed out. Please sign in again.' }, { status: 401 });

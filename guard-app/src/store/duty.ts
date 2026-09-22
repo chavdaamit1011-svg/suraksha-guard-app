@@ -202,6 +202,12 @@ export const useDuty = create<DutyStore>((set, get) => ({
       }
 
     } catch (e: any) {
+      if (!useAuth.getState().guard) {
+        await kv.del(KEYS.todayBundle);
+        set({ bundle: null, current: null, booking: null, timeline: [], alerts: [], online: false,
+          duty: IDLE_DUTY, offline: false, deviceBlocked: false, lastError: null });
+        return;
+      }
       // Offline is a normal state, not an error (PRD 18.17.1 rule 15). Fall back to the cache
       // and keep the local state machine running.
       set({ offline: !(e instanceof ApiError), lastError: e?.message ?? 'offline' });

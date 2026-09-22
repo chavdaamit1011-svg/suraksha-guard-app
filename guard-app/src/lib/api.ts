@@ -54,6 +54,10 @@ async function request<T = Json>(
   };
 
   let { res, data } = await send();
+  if (!isAuthCall && data?.action === 'LOGOUT') {
+    await handleUnauthorized('guard_removed');
+    throw new ApiError(data?.message || 'Please sign in again.', 401, 'guard_removed');
+  }
   if (res.status === 401 && !isAuthCall && (await handleUnauthorized(data?.code))) {
     ({ res, data } = await send());
   }

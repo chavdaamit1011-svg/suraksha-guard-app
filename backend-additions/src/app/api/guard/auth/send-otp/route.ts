@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sendSms } from '@/lib/guardSms';
 import { otpDevEcho } from '@/lib/guardOtp';
+import { activeGuardByPhone, guardRemoved } from '@/lib/guardAccess';
 
 /**
  * Guard phone OTP — send (PRD 18.1). 6-digit, 2-min expiry, 30-second resend cooldown,
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: 'A valid 10-digit phone is required.' }, { status: 400 });
     }
     const now = Date.now();
+    if (!await activeGuardByPhone(key)) return NextResponse.json(guardRemoved, { status: 401 });
     const rec = store[key] ?? { code: '', expiresAt: 0, resendAt: 0, sends: [] };
     rec.sends = rec.sends.filter((t) => now - t < WINDOW_MS);
     if (rec.sends.length >= MAX_PER_WINDOW) {

@@ -11,6 +11,11 @@
     },
     "preview": {
       "distribution": "internal",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://guards.surakshaguards.in",
+        "EXPO_PUBLIC_SOCKET_URL": "https://guards.surakshaguards.in"
+      },
       "android": { "buildType": "apk" }
     },
     "production": {

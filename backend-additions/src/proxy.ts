@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { SUBJECT_HEADER, actorIds, gateGuardApi } from '@/lib/guardSession';
 import { guardCorsHeaders } from '@/lib/guardCors';
+import { activeGuardById, guardRemoved } from '@/lib/guardAccess';
 
 /**
  * Guard app API gate (see src/lib/guardSession.ts). Checks the session token against the guard
@@ -18,6 +19,13 @@ async function guardApiGate(req: NextRequest, pathname: string): Promise<NextRes
     return NextResponse.json({ success: false, code: result.code, message: result.message }, { status: result.status });
   }
   // Never trust a subject header the client sent itself.
+  const verifiedAdmin = !!process.env.GUARD_ADMIN_KEY && req.headers.get('x-guard-admin-key') === process.env.GUARD_ADMIN_KEY;
+  if (!pathname.startsWith('/api/guard/auth/') && !verifiedAdmin) {
+    const ids = new Set([...actorIds(req.nextUrl.searchParams, body), ...(result.subject ? [result.subject] : [])]);
+    for (const id of ids) {
+      if (!await activeGuardById(id)) return NextResponse.json(guardRemoved, { status: 401 });
+    }
+  }
   const headers = new Headers(req.headers);
   headers.delete(SUBJECT_HEADER);
   if (result.subject) headers.set(SUBJECT_HEADER, result.subject);

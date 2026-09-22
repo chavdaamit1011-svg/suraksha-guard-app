@@ -21,7 +21,7 @@ let renewing: Promise<boolean> | null = null;
 let signedOutHandler: (() => void) | null = null;
 
 /** Codes that mean "this login is over", as opposed to "renew and try again". */
-const TERMINAL = new Set(['session_required', 'session_invalid', 'session_revoked', 'device_changed']);
+const TERMINAL = new Set(['session_required', 'session_invalid', 'session_revoked', 'device_changed', 'guard_removed']);
 
 export async function loadSession(): Promise<void> {
   if (loaded) return;
