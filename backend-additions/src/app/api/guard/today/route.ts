@@ -334,7 +334,6 @@ export async function GET(req: Request) {
       .lean()
       .catch(() => null);
 
-    const [recentAttendance, notifications, profile, offers] = await Promise.all([
     const [recentAttendance, notifications, profile, offers, pendingContracts, activeContractDoc] = await Promise.all([
       GuardAttendance.find({ guardId }).sort({ createdAt: -1 }).limit(10).lean().catch(() => []),
       GuardNotification.find({ guardId }).sort({ createdAt: -1 }).limit(10).lean().catch(() => []),

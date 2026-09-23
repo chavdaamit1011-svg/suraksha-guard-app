@@ -8,7 +8,6 @@ import { SideMenu } from '@/components/SideMenu';
 import { UpdateNotice } from '@/components/UpdateNotice';
 import { PING_INTERVAL_SEC } from '@/config';
 import { useT } from '@/i18n';
-import type { CurrentAssignment, DutyAlert, DutyStateName, TimelineItem } from '@/lib/api';
 import type { CurrentAssignment, DutyAlert, DutyStateName, TimelineItem, ContractOffer } from '@/lib/api';
 import { startDutyTracking, stopDutyTracking } from '@/lib/dutyTracking';
 import { quickFix } from '@/lib/location';
