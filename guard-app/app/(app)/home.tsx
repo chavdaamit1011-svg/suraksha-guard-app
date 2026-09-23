@@ -8,7 +8,7 @@ import { SideMenu } from '@/components/SideMenu';
 import { UpdateNotice } from '@/components/UpdateNotice';
 import { PING_INTERVAL_SEC } from '@/config';
 import { useT } from '@/i18n';
-import type { CurrentAssignment, DutyAlert, DutyStateName, TimelineItem } from '@/lib/api';
+import type { CurrentAssignment, DutyAlert, DutyStateName, TimelineItem, ContractOffer } from '@/lib/api';
 import { startDutyTracking, stopDutyTracking } from '@/lib/dutyTracking';
 import { quickFix } from '@/lib/location';
 import { formatCountdown, istTime } from '@/lib/duty';
@@ -62,6 +62,8 @@ export default function DutyHome() {
     timeline,
     alerts,
     booking,
+    contractOffers,
+    activeContract,
     online,
     offline,
     queued,
@@ -72,6 +74,7 @@ export default function DutyHome() {
     deviceStanding,
     setOnline,
     accept,
+    respondContract,
   } = useDuty();
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -283,6 +286,56 @@ export default function DutyHome() {
           </View>
         </Pressable>
       ))}
+
+      {/* Contract Assignment Offers from Agency Portal */}
+      {contractOffers && contractOffers.length > 0
+        ? contractOffers.map((offer) => (
+            <ContractOfferCard
+              key={offer.contractId}
+              offer={offer}
+              busy={busy}
+              onAccept={async () => {
+                setBusy(true);
+                try {
+                  await respondContract(offer.contractId, 'accept');
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              onReject={async () => {
+                setBusy(true);
+                try {
+                  await respondContract(offer.contractId, 'reject');
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            />
+          ))
+        : null}
+
+      {/* Active Contract Deployment Badge */}
+      {activeContract ? (
+        <Card style={{ backgroundColor: 'rgba(59,130,246,0.06)', borderColor: 'rgba(59,130,246,0.2)' }}>
+          <View style={styles.rowBetween}>
+            <View style={styles.rowGap}>
+              <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary }}>
+                Active Contract Deployment
+              </Text>
+            </View>
+            <Text style={{ fontSize: 10, color: colors.textMuted }}>
+              {activeContract.startDate} → {activeContract.endDate}
+            </Text>
+          </View>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text, marginTop: 4 }}>
+            {activeContract.client} · {activeContract.site}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.textMuted }}>
+            Shift: {activeContract.shiftTiming}
+          </Text>
+        </Card>
+      ) : null}
 
       {/* Primary action — one 96dp button, ~25% of the viewport (PRD 18.3 §5) */}
       <PrimaryAction
@@ -529,6 +582,67 @@ function BookingCard({ booking }: { booking: any }) {
       {booking.dutyDetails?.dutyStartedAt ? (
         <Meta icon="log-in" text={`${t('duty.checkedInAt')} ${istTime(booking.dutyDetails.dutyStartedAt)}`} tone={colors.onDuty} />
       ) : null}
+    </Card>
+  );
+}
+
+function ContractOfferCard({
+  offer,
+  busy,
+  onAccept,
+  onReject,
+}: {
+  offer: ContractOffer;
+  busy: boolean;
+  onAccept: () => Promise<void>;
+  onReject: () => Promise<void>;
+}) {
+  return (
+    <Card style={{ borderColor: colors.primary, borderWidth: 1.5, backgroundColor: 'rgba(59,130,246,0.04)' }}>
+      <View style={styles.rowBetween}>
+        <View style={styles.rowGap}>
+          <Ionicons name="document-text" size={16} color={colors.primary} />
+          <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary, textTransform: 'uppercase' }}>
+            New Contract Assignment
+          </Text>
+        </View>
+        <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning, backgroundColor: colors.warningDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+          Action Required
+        </Text>
+      </View>
+
+      <Body style={{ fontWeight: '800', marginTop: 4 }}>{offer.client} · {offer.site}</Body>
+
+      <View style={styles.metaRow}>
+        <Meta icon="calendar" text={`${offer.startDate} to ${offer.endDate}`} />
+        <Meta icon="time" text={`Shift: ${offer.shiftTiming}`} />
+        {offer.shiftHours ? <Meta icon="hourglass-outline" text={`${offer.shiftHours} hrs/day`} /> : null}
+      </View>
+
+      <Muted style={{ fontSize: 11, marginTop: 2 }}>
+        Accepting this deploys you to this contract for daily scheduled shifts.
+      </Muted>
+
+      <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
+        <View style={{ flex: 1 }}>
+          <Button
+            label="Reject"
+            variant="ghost"
+            size="small"
+            disabled={busy}
+            onPress={onReject}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button
+            label="Accept Contract"
+            variant="primary"
+            size="small"
+            disabled={busy}
+            onPress={onAccept}
+          />
+        </View>
+      </View>
     </Card>
   );
 }

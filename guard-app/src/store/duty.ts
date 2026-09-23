@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api, ApiError, type CurrentAssignment, type DutyAlert, type DutyBundle, type TimelineItem } from '@/lib/api';
+import { api, ApiError, type CurrentAssignment, type DutyAlert, type DutyBundle, type TimelineItem, type ContractOffer } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { computeDuty, type LocalDuty } from '@/lib/duty';
 import { setDutyLocationSink } from '@/lib/dutyTracking';
@@ -43,6 +43,8 @@ type DutyStore = {
   duty: LocalDuty;
 
   booking: Booking | null;
+  contractOffers: ContractOffer[];
+  activeContract: ContractOffer | null;
   online: boolean;
 
   offline: boolean;
@@ -61,6 +63,7 @@ type DutyStore = {
   tick: () => void;
   setOnline: (v: boolean, coords?: { lat: number; lng: number }) => Promise<void>;
   accept: () => Promise<void>;
+  respondContract: (contractId: string, action: 'accept' | 'reject', reason?: string) => Promise<void>;
   pushLocation: (lat: number, lng: number, heading?: number) => Promise<void>;
   refreshQueued: () => Promise<void>;
   /** Optimistically mark the current shift checked in/out so the UI moves before the server replies. */
@@ -105,6 +108,8 @@ export const useDuty = create<DutyStore>((set, get) => ({
   alerts: [],
   duty: IDLE_DUTY,
   booking: null,
+  contractOffers: [],
+  activeContract: null,
   online: false,
   offline: false,
   queued: 0,
@@ -124,6 +129,8 @@ export const useDuty = create<DutyStore>((set, get) => ({
         timeline: cached.timeline ?? [],
         alerts: cached.alerts ?? [],
         booking: (cached.booking as Booking) ?? null,
+        contractOffers: cached.contractOffers ?? [],
+        activeContract: cached.activeContract ?? null,
         online: !!cached.guard?.isOnline,
         duty: computeDuty(cached.current, new Date(), cached.booking),
         hydrated: true,
@@ -172,6 +179,8 @@ export const useDuty = create<DutyStore>((set, get) => ({
         timeline: bundle.timeline ?? [],
         alerts: bundle.alerts ?? [],
         booking: (bundle.booking as Booking) ?? null,
+        contractOffers: bundle.contractOffers ?? [],
+        activeContract: bundle.activeContract ?? null,
         online: !!bundle.guard?.isOnline,
         // The server's verdict wins the moment it arrives.
         duty: bundle.current?.duty ?? computeDuty(bundle.current, new Date(), bundle.booking),
@@ -239,6 +248,13 @@ export const useDuty = create<DutyStore>((set, get) => ({
     const b = get().booking;
     if (!id || !b) return;
     await api.acceptBooking(b.bookingId, id);
+    await get().refresh();
+  },
+
+  respondContract: async (contractId: string, action: 'accept' | 'reject', reason?: string) => {
+    const id = gid(useAuth.getState().guard);
+    if (!id) return;
+    await api.respondContract(contractId, id, action, reason);
     await get().refresh();
   },
 

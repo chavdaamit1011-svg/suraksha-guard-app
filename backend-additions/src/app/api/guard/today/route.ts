@@ -5,6 +5,7 @@ import { connectToDatabase } from '@/lib/db';
 import { APGuard } from '@/lib/models/APGuard';
 import { Booking } from '@/lib/models/BookingState';
 import { AgencyRoster } from '@/lib/models/AgencyRoster';
+import AgencyContract from '@/lib/models/AgencyContract';
 import { PatrolCheckpoint, PatrolRound } from '@/lib/models/Patrol';
 import { GuardAttendance } from '@/lib/models/GuardAttendance';
 import { GuardNotification } from '@/lib/models/GuardNotification';
@@ -333,7 +334,7 @@ export async function GET(req: Request) {
       .lean()
       .catch(() => null);
 
-    const [recentAttendance, notifications, profile, offers] = await Promise.all([
+    const [recentAttendance, notifications, profile, offers, pendingContracts, activeContractDoc] = await Promise.all([
       GuardAttendance.find({ guardId }).sort({ createdAt: -1 }).limit(10).lean().catch(() => []),
       GuardNotification.find({ guardId }).sort({ createdAt: -1 }).limit(10).lean().catch(() => []),
       GuardAppProfile.findOne({ guardId }).lean().catch(() => null),
@@ -344,7 +345,48 @@ export async function GET(req: Request) {
         .limit(5)
         .lean()
         .catch(() => []),
+      AgencyContract.find({
+        status: { $in: ['Active', 'Draft'] },
+        assignedGuards: {
+          $elemMatch: {
+            guardId,
+            status: { $in: ['Pending', undefined] }
+          }
+        }
+      }).lean().catch(() => []),
+      AgencyContract.findOne({
+        status: 'Active',
+        assignedGuards: {
+          $elemMatch: {
+            guardId,
+            status: 'Accepted'
+          }
+        }
+      }).lean().catch(() => null),
     ]);
+
+    const contractOffers = (pendingContracts as any[]).map((c: any) => ({
+      contractId: String(c._id),
+      title: c.title,
+      client: c.client,
+      site: c.site || 'Main Site',
+      startDate: c.startDate,
+      endDate: c.endDate || 'Ongoing',
+      shiftTiming: c.shiftTiming || `${c.shiftHours || 12}h Shift`,
+      shiftHours: c.shiftHours || 8,
+      ratePerGuard: c.ratePerGuard,
+    }));
+
+    const activeContract = activeContractDoc ? {
+      contractId: String((activeContractDoc as any)._id),
+      title: (activeContractDoc as any).title,
+      client: (activeContractDoc as any).client,
+      site: (activeContractDoc as any).site || 'Main Site',
+      startDate: (activeContractDoc as any).startDate,
+      endDate: (activeContractDoc as any).endDate || 'Ongoing',
+      shiftTiming: (activeContractDoc as any).shiftTiming || `${(activeContractDoc as any).shiftHours || 12}h Shift`,
+      shiftHours: (activeContractDoc as any).shiftHours || 8,
+    } : null;
 
     const alerts = buildAlerts(guard, profile, current, notifications, offers);
 
@@ -364,6 +406,8 @@ export async function GET(req: Request) {
       timeline: buildTimeline(current, patrolRounds, wakeChecks),
       alerts,
       booking: booking ?? null,
+      contractOffers,
+      activeContract,
       offers: offers.map((o: any) => ({
         offerId: String(o._id),
         vacancyId: o.vacancyId,

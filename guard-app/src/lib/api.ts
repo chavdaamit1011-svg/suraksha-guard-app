@@ -202,8 +202,24 @@ export type DutyBundle = {
   booking: Record<string, any> | null;
   /** Live replacement offers, so a missed push does not mean a missed shift. */
   offers: ReplacementOffer[];
+  /** Pending contract assignments from agency portal awaiting guard acceptance */
+  contractOffers?: ContractOffer[];
+  /** Active accepted contract for this guard */
+  activeContract?: ContractOffer | null;
   recentAttendance: any[];
   notifications: any[];
+};
+
+export type ContractOffer = {
+  contractId: string;
+  title: string;
+  client: string;
+  site: string;
+  startDate: string;
+  endDate: string;
+  shiftTiming: string;
+  shiftHours: number;
+  ratePerGuard?: number;
 };
 
 /** A replacement offer as the card renders it (PRD 18.12 GAP-S-055). */
@@ -629,6 +645,12 @@ export const api = {
 
   notifications: (guardId: string) =>
     request<{ success: boolean; notifications: any[] }>('/api/guard/notifications', { query: { guardId } }),
+
+  respondContract: (contractId: string, guardId: string, action: 'accept' | 'reject', reason?: string) =>
+    request<{ success: boolean; message: string; status: string }>('/api/guard/contract/respond', {
+      method: 'POST',
+      body: { contractId, guardId, action, reason },
+    }),
 
   // ---- Full-PRD guard endpoints (added on backend under /api/guard/*) ----
 
