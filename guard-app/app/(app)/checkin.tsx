@@ -139,10 +139,25 @@ export default function CheckIn() {
   // Client-side hint only — the server re-evaluates against the site on ingest.
   useEffect(() => {
     if (!fix) return;
-    const hint = geofenceHint(current, fix.lat, fix.lng);
+    const targetSite = current
+      ? current
+      : booking?.location?.lat != null && booking?.location?.lng != null
+      ? { lat: booking.location.lat, lng: booking.location.lng, radiusM: 200 }
+      : null;
+    const hint = geofenceHint(targetSite as any, fix.lat, fix.lng);
     setDistance(hint.distanceM);
     setLocState(hint.result);
-  }, [fix, current]);
+  }, [fix, current, booking]);
+
+  // For on-demand bookings in check-out mode: ensure checkout is initiated on the server so the client has the OTP
+  useEffect(() => {
+    if (!isIn && booking && booking.bookingStatus === 'ACTIVE') {
+      const id = guardId(guard);
+      if (id) {
+        api.initiateCheckout(booking.bookingId, id).catch(() => {});
+      }
+    }
+  }, [isIn, booking?.bookingId, booking?.bookingStatus, guard]);
 
   useEffect(() => {
     if (!perm?.granted) requestPerm();
@@ -269,20 +284,25 @@ export default function CheckIn() {
         geofence: locState,
       });
 
-      // 3. Move the UI now — the record is safe either way.
+      // 3. Drive the on-demand booking state machine when this is a B2C duty.
+      if (booking && needsOtp) {
+        try {
+          if (isIn) {
+            await api.startDuty(booking.bookingId, id, otp);
+          } else {
+            await api.completeDuty(booking.bookingId, id, otp);
+          }
+        } catch (apiErr: any) {
+          setError(apiErr?.message || (isIn ? t('duty.arrivalOtp') : t('duty.checkoutOtp')));
+          setBusy(false);
+          return;
+        }
+      }
+
+      // 4. Move the UI now — the record is safe either way.
       markAttendance(isIn ? 'in' : 'out');
       successFeedback();
       setSaved({ at: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }), queued: !isOnline });
-
-      // 4. Drive the on-demand booking state machine when this is a B2C duty.
-      if (booking && needsOtp) {
-        if (isIn) {
-          await api.startDuty(booking.bookingId, id, otp).catch(() => {});
-        } else {
-          if (booking.bookingStatus === 'ACTIVE') await api.initiateCheckout(booking.bookingId, id).catch(() => {});
-          await api.completeDuty(booking.bookingId, id, otp).catch(() => {});
-        }
-      }
 
       refresh().catch(() => {});
       setTimeout(() => router.replace('/home'), 2200);
@@ -304,7 +324,11 @@ export default function CheckIn() {
           <H2>{isIn ? t('checkin.checkedIn') : t('checkin.checkedOut')}</H2>
           <Text style={styles.successMeta}>
             {saved.at}
-            {current?.siteName ? ` · ${current.siteName}` : ''}
+            {current?.siteName
+              ? ` · ${current.siteName}`
+              : booking?.location?.address || booking?.location?.city
+              ? ` · ${booking.location.address || booking.location.city}`
+              : ''}
           </Text>
           {saved.queued ? (
             <View style={styles.rowGap}>
@@ -322,7 +346,11 @@ export default function CheckIn() {
     inside: {
       icon: 'checkmark-circle' as const,
       color: colors.onDuty,
-      text: current?.siteName ? `${t('checkin.inArea')} · ${current.siteName}` : t('checkin.inArea'),
+      text: current?.siteName
+        ? `${t('checkin.inArea')} · ${current.siteName}`
+        : booking?.location?.address || booking?.location?.city
+        ? `${t('checkin.inArea')} · ${booking.location.address || booking.location.city}`
+        : t('checkin.inArea'),
     },
     outside: {
       icon: 'alert-circle' as const,

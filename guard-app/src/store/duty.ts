@@ -27,7 +27,7 @@ export type Booking = {
   bookingStatus: string;
   customerName?: string;
   serviceType?: string;
-  location?: { address?: string; city?: string };
+  location?: { address?: string; city?: string; lat?: number; lng?: number };
   schedule?: { date?: string; startTime?: string; endTime?: string };
   assignedGuard?: { etaMinutes?: number; assignedAt?: string };
   dutyDetails?: { arrivalOtp?: string; checkoutOtp?: string; dutyStartedAt?: string };
@@ -125,7 +125,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
         alerts: cached.alerts ?? [],
         booking: (cached.booking as Booking) ?? null,
         online: !!cached.guard?.isOnline,
-        duty: computeDuty(cached.current),
+        duty: computeDuty(cached.current, new Date(), cached.booking),
         hydrated: true,
       });
     } else {
@@ -174,7 +174,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
         booking: (bundle.booking as Booking) ?? null,
         online: !!bundle.guard?.isOnline,
         // The server's verdict wins the moment it arrives.
-        duty: bundle.current?.duty ?? computeDuty(bundle.current),
+        duty: bundle.current?.duty ?? computeDuty(bundle.current, new Date(), bundle.booking),
         offline: false,
         lastError: null,
         hydrated: true,
@@ -212,14 +212,15 @@ export const useDuty = create<DutyStore>((set, get) => ({
       // and keep the local state machine running.
       set({ offline: !(e instanceof ApiError), lastError: e?.message ?? 'offline' });
       if (!get().bundle) await get().hydrateBundle();
-      set({ duty: computeDuty(get().current) });
+      set({ duty: computeDuty(get().current, new Date(), get().booking) });
     }
   },
 
   tick: () => {
     const cur = get().current;
-    if (!cur) return;
-    set({ duty: computeDuty(cur) });
+    const b = get().booking;
+    if (!cur && !b) return;
+    set({ duty: computeDuty(cur, new Date(), b) });
   },
 
   setOnline: async (v, coords) => {

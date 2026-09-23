@@ -21,8 +21,55 @@ export type LocalDuty = {
   earlyOutReasonRequired: boolean;
 };
 
-export function computeDuty(a: Assignment | null, now: Date = new Date()): LocalDuty {
+export function computeDuty(
+  a: Assignment | null,
+  now: Date = new Date(),
+  booking?: { bookingStatus?: string; [k: string]: any } | null
+): LocalDuty {
   if (!a) {
+    if (booking) {
+      const bs = booking.bookingStatus ?? '';
+      if (['ASSIGNED', 'EN_ROUTE', 'ARRIVED'].includes(bs)) {
+        return {
+          state: 'check_in',
+          countdownSec: null,
+          canCheckIn: true,
+          canCheckOut: false,
+          lateByMin: 0,
+          earlyOutReasonRequired: false,
+        };
+      }
+      if (bs === 'ACTIVE') {
+        return {
+          state: 'on_duty',
+          countdownSec: null,
+          canCheckIn: false,
+          canCheckOut: true,
+          lateByMin: 0,
+          earlyOutReasonRequired: false,
+        };
+      }
+      if (bs === 'CHECKOUT_INITIATED') {
+        return {
+          state: 'check_out',
+          countdownSec: null,
+          canCheckIn: false,
+          canCheckOut: true,
+          lateByMin: 0,
+          earlyOutReasonRequired: false,
+        };
+      }
+      if (bs === 'COMPLETED') {
+        return {
+          state: 'complete',
+          countdownSec: null,
+          canCheckIn: false,
+          canCheckOut: false,
+          lateByMin: 0,
+          earlyOutReasonRequired: false,
+        };
+      }
+    }
     return { state: 'no_duty', countdownSec: null, canCheckIn: false, canCheckOut: false, lateByMin: 0, earlyOutReasonRequired: false };
   }
 
@@ -96,12 +143,34 @@ export type GeofenceHint = {
   radiusM: number;
 };
 
-export function geofenceHint(a: Assignment | null, lat?: number, lng?: number): GeofenceHint {
-  const radiusM = a?.site.geofenceRadiusM ?? 100;
-  if (!a?.site.geoKnown || a.site.lat == null || a.site.lng == null || lat == null || lng == null) {
+export type GeofenceTarget =
+  | Assignment
+  | { site?: { lat?: number | null; lng?: number | null; geofenceRadiusM?: number; geoKnown?: boolean } }
+  | { lat?: number | null; lng?: number | null; radiusM?: number }
+  | null;
+
+export function geofenceHint(target: GeofenceTarget, lat?: number, lng?: number): GeofenceHint {
+  let targetLat: number | null = null;
+  let targetLng: number | null = null;
+  let radiusM = 100;
+  let geoKnown = false;
+
+  if (target && 'site' in target && target.site) {
+    targetLat = target.site.lat ?? null;
+    targetLng = target.site.lng ?? null;
+    radiusM = target.site.geofenceRadiusM ?? 100;
+    geoKnown = !!target.site.geoKnown && targetLat != null && targetLng != null;
+  } else if (target && 'lat' in target && target.lat != null && 'lng' in target && target.lng != null) {
+    targetLat = target.lat;
+    targetLng = target.lng;
+    radiusM = (target as any).radiusM ?? 200;
+    geoKnown = (targetLat !== 0 || targetLng !== 0);
+  }
+
+  if (!geoKnown || targetLat == null || targetLng == null || lat == null || lng == null) {
     return { result: 'unknown', distanceM: null, radiusM };
   }
-  const d = Math.round(distanceM(lat, lng, a.site.lat, a.site.lng));
+  const d = Math.round(distanceM(lat, lng, targetLat, targetLng));
   return { result: d <= radiusM ? 'inside' : 'outside', distanceM: d, radiusM };
 }
 

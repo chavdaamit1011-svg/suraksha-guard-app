@@ -300,8 +300,12 @@ export default function DutyHome() {
         onGoOnline={goOnline}
       />
 
-      {/* Shift card */}
-      {current ? <ShiftCard assignment={current} /> : null}
+      {/* Shift card or on-demand booking card */}
+      {current ? (
+        <ShiftCard assignment={current} />
+      ) : booking && booking.bookingStatus !== 'PENDING_ACCEPTANCE' && booking.bookingStatus !== 'COMPLETED' ? (
+        <BookingCard booking={booking} />
+      ) : null}
 
       {/* Timeline strip */}
       {timeline.length > 0 ? <Timeline items={timeline} /> : null}
@@ -483,6 +487,49 @@ function ShiftCard({ assignment }: { assignment: CurrentAssignment }) {
         ) : null}
       </Card>
     </Pressable>
+  );
+}
+
+function BookingCard({ booking }: { booking: any }) {
+  const t = useT();
+  const address = booking?.location?.address || booking?.location?.city || 'Assigned Location';
+  const isActive = booking.bookingStatus === 'ACTIVE';
+  const isPendingCheckin = ['ASSIGNED', 'EN_ROUTE', 'ARRIVED'].includes(booking.bookingStatus);
+  const isCheckout = booking.bookingStatus === 'CHECKOUT_INITIATED';
+
+  return (
+    <Card style={isActive ? { borderColor: colors.onDuty } : undefined}>
+      <View style={styles.rowBetween}>
+        <Muted>{booking.bookingId}</Muted>
+        <View style={styles.rowGap}>
+          <Text style={[styles.link, { color: isActive ? colors.onDuty : colors.primary }]}>
+            {isActive ? t('duty.onDuty') : isCheckout ? t('duty.checkOut') : t('duty.readyToCheckIn')}
+          </Text>
+        </View>
+      </View>
+
+      <Body style={{ fontWeight: '800' }}>{booking.customerName || 'Client Booking'}</Body>
+      <Muted>{address}</Muted>
+
+      <View style={styles.metaRow}>
+        <Meta icon="briefcase" text={booking.serviceType || 'Security Service'} />
+        {booking.schedule?.startTime ? (
+          <Meta icon="time" text={`${booking.schedule.startTime}${booking.schedule.endTime ? `–${booking.schedule.endTime}` : ''}`} />
+        ) : null}
+      </View>
+
+      {isPendingCheckin ? (
+        <Meta icon="key" text={t('duty.arrivalOtp')} tone={colors.warning} />
+      ) : null}
+
+      {isCheckout ? (
+        <Meta icon="key" text={t('duty.checkoutOtp')} tone={colors.warning} />
+      ) : null}
+
+      {booking.dutyDetails?.dutyStartedAt ? (
+        <Meta icon="log-in" text={`${t('duty.checkedInAt')} ${istTime(booking.dutyDetails.dutyStartedAt)}`} tone={colors.onDuty} />
+      ) : null}
+    </Card>
   );
 }
 
