@@ -23,7 +23,7 @@ async function agencyExists(id: string): Promise<boolean> {
       return !!account && !inactive(account);
     }
   }
-  const legacy = await db.collection('agencies').findOne({ $or: [{ id }, { _id: oid || id }] });
+  const legacy = await db.collection('agencies').findOne(oid ? { $or: [{ id }, { _id: oid }] } : { id });
   return !!legacy && !inactive(legacy);
 }
 

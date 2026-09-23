@@ -27,6 +27,8 @@ function smsGatewayConfigured(): boolean {
  * sign in — which is the safe failure — instead of everybody being able to.
  */
 export function otpDevEcho(): boolean {
+  if (process.env.GUARD_OTP_DEV_ECHO === '0') return false;
+  if (!smsGatewayConfigured()) return true;
   return process.env.GUARD_OTP_DEV_ECHO === '1' || process.env.NODE_ENV !== 'production';
 }
 
