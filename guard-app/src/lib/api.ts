@@ -509,6 +509,53 @@ export type RosterShift = {
   lateByMin: number;
 };
 
+export type GuardCompletedOrder = {
+  bookingId: string;
+  customerName: string;
+  serviceType: string;
+  status: string;
+  scheduledDate: string | null;
+  scheduledStartTime: string | null;
+  scheduledEndTime: string | null;
+  assignedAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  recordedAt?: string | null;
+  location: string;
+  duration: number;
+  earned: number;
+  rating?: {
+    score: number;
+    review: string;
+    ratedAt: string;
+  } | null;
+};
+
+export type GuardReviewItem = {
+  bookingId: string;
+  customerName: string;
+  serviceType: string;
+  city: string;
+  score: number;
+  review: string;
+  ratedAt: string;
+};
+
+export type GuardMeResponse = {
+  success: boolean;
+  profile: any;
+  guard?: any;
+  earnings: {
+    totalEarnings: number;
+    history: GuardCompletedOrder[];
+  };
+  reviews: {
+    averageRating: number | null;
+    totalReviews: number;
+    items: GuardReviewItem[];
+  };
+};
+
 export const api = {
   raw: request,
 
@@ -615,7 +662,7 @@ export const api = {
     ),
 
   me: (guardId: string) =>
-    request<{ success: boolean; guard: any; earnings?: any; bookings?: any[] }>('/api/guard/me', {
+    request<GuardMeResponse>('/api/guard/me', {
       query: { guardId },
     }),
 

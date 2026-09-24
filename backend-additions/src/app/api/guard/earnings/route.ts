@@ -41,23 +41,30 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const guardId = searchParams.get('guardId');
     if (!guardId) return NextResponse.json({ success: false, message: 'guardId required' }, { status: 400 });
-    if (!mongoose.Types.ObjectId.isValid(guardId)) {
-      return NextResponse.json({ success: false, message: 'Invalid guardId' }, { status: 400 });
-    }
-
     await connectToDatabase();
-    const guard: any = await APGuard.findById(guardId).lean();
+
+    const guardOid = mongoose.Types.ObjectId.isValid(guardId) ? new mongoose.Types.ObjectId(guardId) : null;
+    const guard: any = await APGuard.findOne({
+      $or: [
+        ...(guardOid ? [{ _id: guardOid }] : []),
+        { id: guardId },
+        { guardId: guardId },
+        { phone: guardId },
+      ]
+    }).lean();
+
     if (!guard) return NextResponse.json({ success: false, message: 'Guard not found' }, { status: 404 });
 
+    const resolvedGuardId = String(guard._id || guardId);
     const period = searchParams.get('period') || periodKey();
 
     const [payslips, estimate] = await Promise.all([
-      GuardPayslip.find({ guardId, status: { $ne: 'Draft' } })
+      GuardPayslip.find({ guardId: { $in: [guardId, resolvedGuardId] }, status: { $ne: 'Draft' } })
         .sort({ period: -1 })
         .limit(12)
         .lean()
         .catch(() => []),
-      estimateForPeriod(guardId, period, guard),
+      estimateForPeriod(resolvedGuardId, period, guard),
     ]);
 
     // A finalised payslip for the current period supersedes the estimate entirely.

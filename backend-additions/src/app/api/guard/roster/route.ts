@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { connectToDatabase } from '@/lib/db';
 import { AgencyRoster } from '@/lib/models/AgencyRoster';
+import { APGuard } from '@/lib/models/APGuard';
 import { GuardAttendance } from '@/lib/models/GuardAttendance';
 import { addDays, istDateKey, resolveSite, shiftWindow, type ResolvedSite } from '@/lib/guardRoster';
 
@@ -20,20 +21,35 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const guardId = searchParams.get('guardId');
     if (!guardId) return NextResponse.json({ success: false, message: 'guardId required' }, { status: 400 });
-    if (!mongoose.Types.ObjectId.isValid(guardId)) {
-      return NextResponse.json({ success: false, message: 'Invalid guardId' }, { status: 400 });
-    }
+
+    await connectToDatabase();
+
+    const guardOid = mongoose.Types.ObjectId.isValid(guardId) ? new mongoose.Types.ObjectId(guardId) : null;
+    const guard = await APGuard.findOne({
+      $or: [
+        ...(guardOid ? [{ _id: guardOid }] : []),
+        { id: guardId },
+        { guardId: guardId },
+        { phone: guardId },
+      ]
+    }).lean();
+
+    const guardIdentifiers = [
+      guardId,
+      guard?._id?.toString(),
+      guard?.id,
+      guard?.guardId,
+      guard?.phone,
+    ].filter(Boolean);
 
     const today = istDateKey();
     const from = searchParams.get('from') || addDays(today, -1);
     const days = Math.min(Math.max(parseInt(searchParams.get('days') ?? '8', 10) || 8, 1), 31);
     const dateKeys = Array.from({ length: days }, (_, i) => addDays(from, i));
 
-    await connectToDatabase();
-
     const rosters: any[] = await AgencyRoster.find({
       date: { $in: dateKeys },
-      'assignedGuards.guardId': guardId,
+      'assignedGuards.guardId': { $in: guardIdentifiers },
     })
       .sort({ date: 1 })
       .lean()
