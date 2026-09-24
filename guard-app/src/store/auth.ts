@@ -75,14 +75,6 @@ export const useAuth = create<AuthState>((set, get) => ({
     // A guard who is checked in (per the cached bundle) is never stopped by a PIN on launch.
     const cached = await store.getJSON<any>(KEYS.todayBundle, null).catch(() => null);
     const onShift = !!cached?.current?.checkedInAt && !cached?.current?.checkedOutAt;
-    if (guard?.phone) {
-      secure.set(KEYS.savedAccount, JSON.stringify({
-        phone: guard.phone.replace(/^\+91/, '').replace(/\D/g, ''),
-        name: guard.name,
-        city: guard.city,
-        empId: guard.empId,
-      })).catch(() => {});
-    }
     set({
       hydrated: true,
       guard,
@@ -93,14 +85,6 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   setGuard: async (g, session) => {
     await secure.set(KEYS.guard, JSON.stringify(g));
-    if (g?.phone) {
-      await secure.set(KEYS.savedAccount, JSON.stringify({
-        phone: g.phone.replace(/^\+91/, '').replace(/\D/g, ''),
-        name: g.name,
-        city: g.city,
-        empId: g.empId,
-      })).catch(() => {});
-    }
     if (session) await saveSession(session.token, session.expiresAt);
     await store.setJSON(KEYS.lastLoginAt, Date.now());
     set({ guard: g, needsPin: false });

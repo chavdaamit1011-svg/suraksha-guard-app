@@ -20,10 +20,9 @@ export default function AppLayout() {
 
   // Signed out from outside the app (logout on another phone, phone unlinked by the agency).
   const guard = useAuth((s) => s.guard);
-  const hydrated = useAuth((s) => s.hydrated);
   useEffect(() => {
-    if (hydrated && !guard) router.replace('/login');
-  }, [hydrated, guard, router]);
+    if (!guard) router.replace('/login');
+  }, [guard, router]);
 
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
   const ticker = useRef<ReturnType<typeof setInterval> | null>(null);

@@ -74,7 +74,6 @@ export default function DutyHome() {
     deviceStanding,
     setOnline,
     accept,
-    reject,
     respondContract,
   } = useDuty();
   const [busy, setBusy] = useState(false);
@@ -351,14 +350,6 @@ export default function DutyHome() {
             setBusy(false);
           }
         }}
-        onReject={async () => {
-          setBusy(true);
-          try {
-            await reject();
-          } finally {
-            setBusy(false);
-          }
-        }}
         onGoOnline={goOnline}
       />
 
@@ -394,14 +385,12 @@ function PrimaryAction({
   busy,
   countdown,
   onAccept,
-  onReject,
   onGoOnline,
 }: {
   isOffer: boolean;
   busy: boolean;
   countdown: string;
   onAccept: () => void;
-  onReject: () => void;
   onGoOnline: () => void;
 }) {
   const t = useT();
@@ -410,43 +399,16 @@ function PrimaryAction({
 
   if (isOffer) {
     return (
-      <Card style={{ borderColor: colors.warning, borderWidth: 1.5, backgroundColor: 'rgba(245,198,35,0.04)' }}>
+      <Card style={{ borderColor: colors.warning }}>
         <View style={styles.rowBetween}>
-          <H2>{t('duty.newRequest') || 'New duty request'}</H2>
+          <H2>{t('duty.newRequest')}</H2>
           <Ionicons name="notifications" size={22} color={colors.warning} />
         </View>
-        <Body style={{ fontWeight: '800', marginTop: 4 }}>
+        <Body>
           {booking?.customerName ?? 'Client'} · {booking?.serviceType ?? 'Guarding'}
         </Body>
         <Muted>{booking?.location?.address ?? booking?.location?.city ?? ''}</Muted>
-
-        {booking?.specialInstructions ? (
-          <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: space.sm, borderRadius: radius.sm, marginTop: space.xs }}>
-            <Text style={{ color: colors.warning, fontSize: font.tiny, fontWeight: '700' }}>Special Instructions:</Text>
-            <Text style={{ color: colors.text, fontSize: font.label }}>{booking.specialInstructions}</Text>
-          </View>
-        ) : null}
-
-        <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
-          <View style={{ flex: 1 }}>
-            <Button
-              label={t('common.decline') || 'Decline'}
-              variant="danger"
-              size="small"
-              onPress={onReject}
-              loading={busy}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button
-              label={t('duty.accept') || 'Accept'}
-              variant="success"
-              size="small"
-              onPress={onAccept}
-              loading={busy}
-            />
-          </View>
-        </View>
+        <Button label={t('duty.accept')} variant="success" onPress={onAccept} loading={busy} />
       </Card>
     );
   }

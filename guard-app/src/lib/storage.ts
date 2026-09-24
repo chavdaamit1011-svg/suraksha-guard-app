@@ -16,7 +16,7 @@ import { encryptedStore } from './secureStore';
 export const secure = {
   async get(key: string) {
     try {
-      if (Platform.OS === 'web') return globalThis.localStorage?.getItem(key) ?? null;
+      if (Platform.OS === 'web') return globalThis.sessionStorage?.getItem(key) ?? null;
       return await SecureStore.getItemAsync(key);
     } catch {
       return null;
@@ -25,7 +25,7 @@ export const secure = {
   async set(key: string, value: string) {
     try {
       if (Platform.OS === 'web') {
-        globalThis.localStorage?.setItem(key, value);
+        globalThis.sessionStorage?.setItem(key, value);
         return;
       }
       await SecureStore.setItemAsync(key, value);
@@ -36,7 +36,7 @@ export const secure = {
   async del(key: string) {
     try {
       if (Platform.OS === 'web') {
-        globalThis.localStorage?.removeItem(key);
+        globalThis.sessionStorage?.removeItem(key);
         return;
       }
       await SecureStore.deleteItemAsync(key);
@@ -50,7 +50,6 @@ export const store = encryptedStore;
 
 export const KEYS = {
   guard: 'sg.guard', // secure: the active APGuard object
-  savedAccount: 'sg.savedAccount', // secure: previous login details for suggestion
   deviceId: 'sg.deviceId', // secure: keystore-backed device binding id
   pinHash: 'sg.pinHash', // secure: 4-digit app PIN (hashed)
   session: 'sg.session', // secure: server session token + expiry
