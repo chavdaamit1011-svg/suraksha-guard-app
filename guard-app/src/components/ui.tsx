@@ -35,11 +35,11 @@ export function H1({ children }: { children: React.ReactNode }) {
 export function H2({ children }: { children: React.ReactNode }) {
   return <Text style={styles.h2}>{children}</Text>;
 }
-export function Muted({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <Text style={[styles.muted, style]}>{children}</Text>;
+export function Muted({ children, style, ...props }: { children: React.ReactNode; style?: any } & React.ComponentProps<typeof Text>) {
+  return <Text style={[styles.muted, style]} {...props}>{children}</Text>;
 }
-export function Body({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <Text style={[styles.body, style]}>{children}</Text>;
+export function Body({ children, style, ...props }: { children: React.ReactNode; style?: any } & React.ComponentProps<typeof Text>) {
+  return <Text style={[styles.body, style]} {...props}>{children}</Text>;
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {

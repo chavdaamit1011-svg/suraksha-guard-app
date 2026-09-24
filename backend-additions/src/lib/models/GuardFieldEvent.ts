@@ -10,15 +10,13 @@ const GuardFieldEventSchema = new Schema(
     clientEventUuid: { type: String, required: true, unique: true },
     kind: {
       type: String,
-      // `site_visit` is the supervisor's own geo-stamped presence record (PRD 18.16).
-      enum: ['patrol_scan', 'wake_check', 'sos', 'leave', 'site_visit'],
+      enum: ['patrol_scan', 'patrol_observation', 'wake_check', 'sos', 'leave', 'site_visit', 'incident', 'document'],
       required: true,
       index: true,
     },
     guardId: { type: String, required: true, index: true },
     bookingId: { type: String, default: '', index: true },
 
-    // --- Roster linkage: the shift this event belongs to (PRD 18.7 §7, 18.8 §9). ---
     rosterId: { type: String, default: '', index: true },
     shiftDate: { type: String, default: '' },
     siteId: { type: String, default: '', index: true },
@@ -30,38 +28,30 @@ const GuardFieldEventSchema = new Schema(
 
     lat: { type: Number },
     lng: { type: Number },
-    /** Distance from the checkpoint / site, computed server-side. */
     distanceM: { type: Number, default: null },
 
-    /** Server-issued media ids from /api/guard/media (photos, voice notes, wake selfies). */
     mediaIds: { type: [String], default: [] },
 
-    // patrol_scan
     checkpointCode: { type: String, default: '' },
     checkpointId: { type: String, default: '' },
     roundId: { type: String, default: '', index: true },
-    scanMethod: { type: String, default: '' }, // qr | nfc | manual
-    // wake_check
+    scanMethod: { type: String, default: '' },
     respondedMs: { type: Number },
     missed: { type: Boolean, default: false },
     wakeScheduleId: { type: String, default: '', index: true },
-    // sos
     acknowledgedBy: { type: String, default: '' },
-    triggerMethod: { type: String, default: '' }, // long_press | power_button | voice | watch
-    channel: { type: String, default: '' }, // socket | rest | sms | queue
+    triggerMethod: { type: String, default: '' },
+    channel: { type: String, default: '' },
 
-    // Anti-spoof scoring, mirrored from attendance so every field event carries a trust band.
     eventTrustScore: { type: Number, default: 100 },
     confidence: { type: String, enum: ['high', 'low', 'review'], default: 'high' },
     reviewFlags: { type: [String], default: [] },
-    // leave
     fromDate: { type: String, default: '' },
     toDate: { type: String, default: '' },
     reason: { type: String, default: '' },
 
-    status: { type: String, default: 'recorded' }, // recorded | acknowledged | resolved | approved | rejected
+    status: { type: String, default: 'recorded' },
 
-    // --- Supervisor verification (PRD 18.16), mirroring GuardAttendance ---
     reviewDecision: { type: String, enum: ['', 'approved', 'rejected'], default: '' },
     reviewedBy: { type: String, default: '' },
     reviewedAt: { type: Date, default: null },

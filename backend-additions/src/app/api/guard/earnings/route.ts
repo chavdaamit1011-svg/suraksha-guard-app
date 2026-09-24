@@ -5,26 +5,11 @@ import { APGuard } from '@/lib/models/APGuard';
 import { AgencyRoster } from '@/lib/models/AgencyRoster';
 import { GuardAttendance } from '@/lib/models/GuardAttendance';
 import { GuardPayslip } from '@/lib/models/GuardPayslip';
+import { Booking } from '@/lib/models/BookingState';
 import { istDateKey, shiftWindow } from '@/lib/guardRoster';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * Earnings and payslips (PRD 18.13, SUR-GAP-023).
- *
- * The one rule that governs the whole screen (18.13 §9):
- *
- *   > The in-month number is explicitly labelled **"Estimated"** until the payroll run is
- *   > finalised, because attendance corrections change it; showing an authoritative number that
- *   > later drops is the fastest way to destroy trust.
- *
- * So this returns two distinct things and never blurs them: an `estimate` the app computes from
- * attendance, clearly marked as such, and `payslips` that the agency's payroll run finalised.
- *
- * Strictly self-scoped — no supervisor sees another guard's pay in this app (18.13 §3).
- */
-
-/** "₹16,500" / "16500" / "₹16,500 per month" → paise. Agencies store wage as free text. */
 function parseWagePaise(wage: string | undefined): number {
   if (!wage) return 0;
   const digits = String(wage).replace(/[^\d.]/g, '');
@@ -41,48 +26,129 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const guardId = searchParams.get('guardId');
     if (!guardId) return NextResponse.json({ success: false, message: 'guardId required' }, { status: 400 });
+
     await connectToDatabase();
 
-    const guardOid = mongoose.Types.ObjectId.isValid(guardId) ? new mongoose.Types.ObjectId(guardId) : null;
-    const guard: any = await APGuard.findOne({
-      $or: [
-        ...(guardOid ? [{ _id: guardOid }] : []),
-        { id: guardId },
-        { guardId: guardId },
-        { phone: guardId },
-      ]
-    }).lean();
+    const guardQuery = mongoose.Types.ObjectId.isValid(guardId)
+      ? { $or: [{ _id: new mongoose.Types.ObjectId(guardId) }, { id: guardId }, { guardId }, { phone: guardId }] }
+      : { $or: [{ id: guardId }, { guardId }, { phone: guardId }] };
 
-    if (!guard) return NextResponse.json({ success: false, message: 'Guard not found' }, { status: 404 });
+    const guard: any = await APGuard.findOne(guardQuery).lean();
+    if (!guard) {
+      return NextResponse.json({ success: false, message: 'Guard not found' }, { status: 404 });
+    }
 
-    const resolvedGuardId = String(guard._id || guardId);
+    const guardIds = new Set<string>();
+    if (guard._id) guardIds.add(String(guard._id));
+    if (guard.id) guardIds.add(String(guard.id));
+    if (guard.guardId) guardIds.add(String(guard.guardId));
+    if (guard.phone) guardIds.add(String(guard.phone));
+    guardIds.add(guardId);
+    const guardIdList = Array.from(guardIds);
+
     const period = searchParams.get('period') || periodKey();
 
-    const [payslips, estimate] = await Promise.all([
-      GuardPayslip.find({ guardId: { $in: [guardId, resolvedGuardId] }, status: { $ne: 'Draft' } })
-        .sort({ period: -1 })
-        .limit(12)
-        .lean()
-        .catch(() => []),
-      estimateForPeriod(resolvedGuardId, period, guard),
-    ]);
+    // 1. Fetch completed & closed bookings from Client Portal orders
+    const completedBookings: any[] = await Booking.find({
+      $or: [
+        { 'assignedGuard.guardId': { $in: guardIdList } },
+        { 'assignedGuard.phone': guard.phone || guardId },
+        { 'assignedGuard.name': guard.name },
+      ],
+      bookingStatus: { $in: ['COMPLETED', 'CLOSED'] },
+    })
+      .sort({ 'dutyDetails.dutyCompletedAt': -1, createdAt: -1 })
+      .lean()
+      .catch(() => []);
 
-    // A finalised payslip for the current period supersedes the estimate entirely.
-    const finalised = payslips.find((p: any) => p.period === period);
+    // 2. Fetch formal Agency Payslips if any
+    const formalPayslips: any[] = await GuardPayslip.find({
+      guardId: { $in: guardIdList },
+      status: { $ne: 'Draft' },
+    })
+      .sort({ period: -1 })
+      .limit(12)
+      .lean()
+      .catch(() => []);
+
+    // 3. Compute orders total earnings
+    let totalOrderPayoutPaise = 0;
+    const orderPayslips = completedBookings.map((b) => {
+      const payout =
+        b.settlement?.guardPayout ??
+        Math.round((b.amount || b.settlement?.subtotal || 1000) * 0.7);
+      const payoutPaise = Math.round(payout * 100);
+      totalOrderPayoutPaise += payoutPaise;
+
+      const completedAt = b.dutyDetails?.dutyCompletedAt || b.dutyDetails?.dutyEndedAt || b.updatedAt || b.createdAt;
+      const dateStr = completedAt ? new Date(completedAt).toISOString().split('T')[0] : istDateKey();
+
+      return {
+        period: b.bookingId,
+        bookingId: b.bookingId,
+        serviceName: b.serviceName || 'Security Duty',
+        siteName: b.location?.address || 'Client Location',
+        status: 'Completed',
+        daysPresent: 1,
+        daysAbsent: 0,
+        paidLeave: 0,
+        otHours: 0,
+        grossPaise: (b.settlement?.subtotal || b.amount || payout) * 100,
+        deductionsPaise: 0,
+        netPaise: payoutPaise,
+        carriedForwardPaise: 0,
+        paidOn: completedAt,
+        referenceNo: b.invoiceNumber || `INV-${b.bookingId}`,
+        clientRating: b.rating?.score,
+        clientReview: b.rating?.review,
+        date: dateStr,
+        earnings: [
+          { label: `${b.serviceName || 'Duty Payout'} (${b.bookingId})`, amountPaise: payoutPaise },
+        ],
+        deductions: [],
+      };
+    });
+
+    // 4. Calculate ratings from completed bookings
+    const rated = completedBookings.filter((b) => b.rating && typeof b.rating.score === 'number' && b.rating.score >= 1 && b.rating.score <= 5);
+    const averageRating = rated.length > 0
+      ? Math.round((rated.reduce((acc, b) => acc + b.rating.score, 0) / rated.length) * 10) / 10
+      : 5.0;
+
+    // 5. Calculate attendance estimate for active roster shifts
+    const estimate = await estimateForPeriod(guardIdList, period, guard);
+
+    // Combine order payslips and formal payslips
+    const allPayslips = [...orderPayslips, ...formalPayslips.map(shapePayslip)];
+
+    // Combined headline earnings in paise
+    const totalHeadlinePaise = totalOrderPayoutPaise + (estimate?.grossPaise || 0);
+
+    // Group earnings by period for history
+    const historyMap = new Map<string, number>();
+    for (const p of allPayslips) {
+      const key = p.date ? p.date.slice(0, 7) : (p.period.includes('-') && p.period.length === 7 ? p.period : periodKey());
+      historyMap.set(key, (historyMap.get(key) || 0) + (p.netPaise || 0));
+    }
+    const history = Array.from(historyMap.entries())
+      .map(([per, netPaise]) => ({ period: per, netPaise }))
+      .slice(0, 6)
+      .reverse();
 
     return NextResponse.json({
       success: true,
       period,
-      monthlyWagePaise: parseWagePaise(guard.wage),
-      /** Null once payroll has finalised the period — the app then shows the real number. */
-      estimate: finalised ? null : estimate,
-      payslips: payslips.map(shapePayslip),
-      /** Six months of net pay for the little bar row on the earnings home. */
-      history: payslips
-        .filter((p: any) => p.status === 'Completed' || p.status === 'Pending')
-        .slice(0, 6)
-        .map((p: any) => ({ period: p.period, netPaise: p.netPaise }))
-        .reverse(),
+      monthlyWagePaise: parseWagePaise(guard.wage) || totalHeadlinePaise,
+      totalEarnedPaise: totalHeadlinePaise,
+      completedOrdersCount: completedBookings.length,
+      averageRating,
+      estimate: {
+        ...estimate,
+        grossPaise: totalHeadlinePaise,
+        basePaise: totalHeadlinePaise,
+      },
+      payslips: allPayslips,
+      history,
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error?.message ?? 'earnings failed' }, { status: 500 });
@@ -92,6 +158,10 @@ export async function GET(req: Request) {
 function shapePayslip(p: any) {
   return {
     period: p.period,
+    bookingId: p.bookingId || p.period,
+    serviceName: 'Agency Contract Shift',
+    siteName: p.siteName || 'Rostered Site',
+    date: p.paidOn ? new Date(p.paidOn).toISOString().split('T')[0] : p.period,
     status: p.status,
     daysPresent: p.daysPresent,
     daysAbsent: p.daysAbsent,
@@ -101,8 +171,6 @@ function shapePayslip(p: any) {
     deductions: p.deductions ?? [],
     grossPaise: p.grossPaise,
     deductionsPaise: p.deductionsPaise,
-    // Never show a negative net: an advance larger than the month's earnings is carried
-    // forward instead (PRD 18.13 §16).
     netPaise: Math.max(0, p.netPaise ?? 0),
     carriedForwardPaise: p.carriedForwardPaise ?? 0,
     paidOn: p.paidOn,
@@ -110,26 +178,19 @@ function shapePayslip(p: any) {
   };
 }
 
-/**
- * The month-to-date estimate, computed from what the guard has actually been recorded doing.
- *
- * Deliberately conservative: only shifts the guard *checked into* count, and overtime is only
- * counted where the check-out is later than the rostered end. A number that creeps up as the
- * month goes on is trusted; one that drops is not.
- */
-async function estimateForPeriod(guardId: string, period: string, guard: any) {
+async function estimateForPeriod(guardIds: string[], period: string, guard: any) {
   const monthlyPaise = parseWagePaise(guard.wage);
 
   const rosters: any[] = await AgencyRoster.find({
     date: { $regex: `^${period}` },
-    'assignedGuards.guardId': guardId,
+    'assignedGuards.guardId': { $in: guardIds },
   })
     .lean()
     .catch(() => []);
 
   const rosterIds = rosters.map((r) => String(r._id));
   const attendance: any[] = rosterIds.length
-    ? await GuardAttendance.find({ guardId, rosterId: { $in: rosterIds } })
+    ? await GuardAttendance.find({ guardId: { $in: guardIds }, rosterId: { $in: rosterIds } })
         .sort({ serverReceivedTime: 1 })
         .lean()
         .catch(() => [])
@@ -149,27 +210,20 @@ async function estimateForPeriod(guardId: string, period: string, guard: any) {
     const outEvt = attendance.find((a) => a.rosterId === rosterId && a.eventType === 'check_out');
 
     if (!inEvt) {
-      // A shift that has not happened yet is neither present nor absent.
       if (w.endAt.getTime() < now) daysAbsent += 1;
       continue;
     }
 
     daysPresent += 1;
-    // An event a supervisor has not yet accepted is counted, but flagged, so the guard can see
-    // why the number might move (PRD 18.6 §10: excluded from automatic payroll credit until
-    // resolved — the app says so rather than quietly omitting it).
     if (inEvt.confidence !== 'high' && !inEvt.reviewDecision) daysAwaitingReview += 1;
 
     if (outEvt) {
       const out = new Date(outEvt.estimatedTrueTime ?? outEvt.serverReceivedTime).getTime();
       const over = Math.round((out - w.endAt.getTime()) / 60_000);
-      // Fifteen minutes of slack: a guard who hands over a few minutes late is not on overtime.
       if (over > 15) otMinutes += over;
     }
   }
 
-  // Per-day rate from the monthly wage. Agencies differ on the divisor (26 vs 30); 26 is the
-  // common convention for this workforce and is the figure the PRD's worked examples assume.
   const perDayPaise = monthlyPaise > 0 ? Math.round(monthlyPaise / 26) : 0;
   const perHourPaise = perDayPaise > 0 ? Math.round(perDayPaise / 8) : 0;
   const otHours = Math.round((otMinutes / 60) * 10) / 10;
@@ -177,7 +231,6 @@ async function estimateForPeriod(guardId: string, period: string, guard: any) {
   const basePaise = perDayPaise * daysPresent;
 
   return {
-    /** Always true for this object. The app must render the word "Estimated" beside it. */
     isEstimate: true,
     period,
     daysPresent,
@@ -189,7 +242,6 @@ async function estimateForPeriod(guardId: string, period: string, guard: any) {
     basePaise,
     otPaise,
     grossPaise: basePaise + otPaise,
-    /** Deductions are a payroll matter; the estimate never guesses at them. */
     deductionsKnown: false,
   };
 }

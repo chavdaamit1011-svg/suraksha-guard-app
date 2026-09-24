@@ -13,7 +13,6 @@ import { successFeedback } from '@/lib/feedback';
 import { api, ApiError, type ChangeField, type ChangeRequest, type PersonalDetails } from '@/lib/api';
 import { captureMedia } from '@/lib/media';
 import { guardId, useAuth } from '@/store/auth';
-import { goBack } from '@/lib/navigation';
 import { useVersion } from '@/store/version';
 import { colors, font, radius, space, touch } from '@/theme';
 
@@ -346,7 +345,7 @@ export default function Details() {
 
   return (
     <Screen>
-      <Header title={t('details.title')} onBack={() => goBack()} />
+      <Header title={t('details.title')} onBack={() => router.back()} />
 
       {notice ? (
         <Card style={{ borderColor: colors.onDuty, backgroundColor: colors.onDutyDim }}>

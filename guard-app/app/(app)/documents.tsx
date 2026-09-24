@@ -13,7 +13,6 @@ import { api, type DocKind, type GuardDocument } from '@/lib/api';
 import { photoQuality } from '@/lib/blur';
 import { captureMedia } from '@/lib/media';
 import { enqueue } from '@/lib/queue';
-import { goBack } from '@/lib/navigation';
 import { guardId, useAuth } from '@/store/auth';
 import { colors, font, radius, space } from '@/theme';
 
@@ -307,7 +306,7 @@ export default function Documents() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Pressable onPress={() => goBack()} hitSlop={12}>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <H2>{t('documents.title')}</H2>

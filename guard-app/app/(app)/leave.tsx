@@ -12,7 +12,6 @@ import { successFeedback } from '@/lib/feedback';
 import { api, ApiError, type LeaveBalance, type LeaveRequest, type LeaveType } from '@/lib/api';
 import { captureMedia } from '@/lib/media';
 import { enqueue } from '@/lib/queue';
-import { goBack } from '@/lib/navigation';
 import { guardId, useAuth } from '@/store/auth';
 import { useVersion } from '@/store/version';
 import { colors, font, radius, space, touch } from '@/theme';
@@ -195,7 +194,7 @@ export default function Leave() {
   if (leaveOff) {
     return (
       <Screen>
-        <Header title={t('leave.title')} onBack={() => goBack()} />
+        <Header title={t('leave.title')} onBack={() => router.back()} />
         <FeatureOffNotice />
       </Screen>
     );
@@ -204,7 +203,7 @@ export default function Leave() {
   if (done) {
     return (
       <Screen>
-        <Header title={t('leave.title')} onBack={() => goBack()} />
+        <Header title={t('leave.title')} onBack={() => router.back()} />
         <Card style={{ borderColor: colors.onDuty, backgroundColor: colors.onDutyDim, alignItems: 'center', gap: space.md }}>
           <Ionicons name="checkmark-circle" size={56} color={colors.onDuty} />
           <H2>{t('leave.success')}</H2>
@@ -219,7 +218,7 @@ export default function Leave() {
 
   return (
     <Screen>
-      <Header title={t('leave.title')} onBack={() => goBack()} />
+      <Header title={t('leave.title')} onBack={() => router.back()} />
 
       {/* 1 — type */}
       <View style={styles.typeRow}>

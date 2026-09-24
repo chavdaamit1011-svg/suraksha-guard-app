@@ -14,7 +14,6 @@ import { clearFailed, failedEvents, flush, lastSyncAt, pendingCount } from '@/li
 import { encryptionActive } from '@/lib/secureStore';
 import { exactAlarmsAllowed, requestSosPermissions, sosPermissionState } from '@/lib/native';
 import { guardId, useAuth } from '@/store/auth';
-import { goBack } from '@/lib/navigation';
 import { useDuty } from '@/store/duty';
 import { colors, font, radius, space } from '@/theme';
 
@@ -295,7 +294,7 @@ export default function AppHealth() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Pressable onPress={() => goBack()} hitSlop={12}>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <H2>{t('apphealth.title')}</H2>

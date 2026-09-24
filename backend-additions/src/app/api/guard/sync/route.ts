@@ -26,7 +26,7 @@ const PRIORITY: Record<string, number> = {
 
 export async function POST(req: Request) {
   try {
-    const { guardId, events, device } = await req.json();
+    const { guardId, events } = await req.json();
     if (!guardId || !Array.isArray(events)) {
       return NextResponse.json({ success: false, message: 'guardId and events[] are required' }, { status: 400 });
     }
@@ -115,7 +115,6 @@ export async function POST(req: Request) {
               { upsert: true }
             );
 
-            // Update guard position if coordinates provided
             if (Number.isFinite(p.lat) && Number.isFinite(p.lng)) {
               await APGuard.updateMany(
                 { $or: [{ id: guardId }, { guardId }] },
@@ -123,7 +122,6 @@ export async function POST(req: Request) {
               ).catch(() => {});
             }
 
-            // Sync booking lifecycle if attached
             if (common.bookingId) {
               if (ev.type === 'check_in') {
                 await Booking.updateOne(

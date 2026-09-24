@@ -6,7 +6,6 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Body, Button, Card, H2, Muted, Screen } from '@/components/ui';
 import { useI18n, useT } from '@/i18n';
 import { KEYS, store } from '@/lib/storage';
-import { goBack } from '@/lib/navigation';
 import { useDuty } from '@/store/duty';
 import { colors, font, radius, space, touch } from '@/theme';
 
@@ -77,7 +76,7 @@ export default function Briefing() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Pressable onPress={() => goBack()} hitSlop={12}>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <H2>{t('briefing.title')}</H2>

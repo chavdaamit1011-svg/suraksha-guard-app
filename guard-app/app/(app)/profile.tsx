@@ -4,7 +4,6 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Card, H2, Screen } from '@/components/ui';
 import { useT } from '@/i18n';
 import { useAuth } from '@/store/auth';
-import { goBack } from '@/lib/navigation';
 import { colors, font, space } from '@/theme';
 
 /**
@@ -19,7 +18,7 @@ export default function Profile() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Ionicons name="arrow-back" size={24} color={colors.text} onPress={() => goBack()} />
+        <Ionicons name="arrow-back" size={24} color={colors.text} onPress={() => router.back()} />
         <H2>{t('profile.title')}</H2>
         <View style={{ width: 24 }} />
       </View>

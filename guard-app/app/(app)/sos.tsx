@@ -11,7 +11,6 @@ import { useT } from '@/i18n';
 import { api } from '@/lib/api';
 import { fireSos, stopSiren, watchAcknowledgement, type SosRung, type SosState } from '@/lib/sos';
 import { guardId, useAuth } from '@/store/auth';
-import { goBack } from '@/lib/navigation';
 import { useDuty } from '@/store/duty';
 import { colors, font, radius, space } from '@/theme';
 
@@ -140,7 +139,7 @@ export default function Sos() {
         </View>
         <View style={styles.foot}>
           <Button label={t('sos.sendNow')} variant="danger" size="huge" onPress={() => setPhase('active')} />
-          <Button label={t('common.cancel')} variant="ghost" onPress={() => goBack()} />
+          <Button label={t('common.cancel')} variant="ghost" onPress={() => router.back()} />
         </View>
       </SafeAreaView>
     );
