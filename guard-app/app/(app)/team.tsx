@@ -14,6 +14,7 @@ import { quickFix } from '@/lib/location';
 import { formatDistance, istTime } from '@/lib/duty';
 import { captureMedia } from '@/lib/media';
 import { guardId, useAuth } from '@/store/auth';
+import { goBack } from '@/lib/navigation';
 import { colors, font, radius, space, touch } from '@/theme';
 
 const STATE_TONE: Record<TeamState, { color: string; icon: keyof typeof Ionicons.glyphMap }> = {
@@ -92,7 +93,7 @@ export default function Team() {
   if (loading) {
     return (
       <Screen>
-        <Header onBack={() => router.back()} title={t('team.title')} />
+        <Header onBack={() => goBack()} title={t('team.title')} />
         <Card style={styles.center}>
           <ActivityIndicator color={colors.primary} />
           <Muted>{t('common.loading')}</Muted>
@@ -104,7 +105,7 @@ export default function Team() {
   if (!data?.isSupervisor) {
     return (
       <Screen>
-        <Header onBack={() => router.back()} title={t('team.title')} />
+        <Header onBack={() => goBack()} title={t('team.title')} />
         <Card style={styles.center}>
           <Ionicons name="people-outline" size={36} color={colors.textFaint} />
           <Muted style={{ textAlign: 'center' }}>{t('team.notSupervisor')}</Muted>
@@ -135,7 +136,7 @@ export default function Team() {
 
   return (
     <Screen>
-      <Header onBack={() => router.back()} title={t('team.title')} />
+      <Header onBack={() => goBack()} title={t('team.title')} />
 
       {/* The numbers a supervisor scans first */}
       <View style={styles.stats}>

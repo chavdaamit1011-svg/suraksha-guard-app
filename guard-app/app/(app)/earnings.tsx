@@ -7,9 +7,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Body, Button, Card, H2, Muted, Screen } from '@/components/ui';
 import { useI18n, useT } from '@/i18n';
-import { api, ApiError, type EarningsResponse, type Payslip, type GuardCompletedOrder } from '@/lib/api';
+import { api, ApiError, type EarningsResponse, type Payslip } from '@/lib/api';
 import { KEYS, store } from '@/lib/storage';
 import { guardId, useAuth } from '@/store/auth';
+import { goBack } from '@/lib/navigation';
 import { colors, font, radius, space, touch } from '@/theme';
 
 const CACHE_KEY = 'sg.earnings';
@@ -50,8 +51,6 @@ export default function EarningsScreen() {
   const guard = useAuth((s) => s.guard);
 
   const [data, setData] = useState<EarningsResponse | null>(null);
-  const [completedOrders, setCompletedOrders] = useState<GuardCompletedOrder[]>([]);
-  const [orderTotalEarnings, setOrderTotalEarnings] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [open, setOpen] = useState<Payslip | null>(null);
@@ -61,33 +60,14 @@ export default function EarningsScreen() {
     const id = guardId(guard);
     if (!id) return;
     try {
-      const [resEarnings, resMe] = await Promise.all([
-        api.earnings(id).catch(() => null),
-        api.me(id).catch(() => null),
-      ]);
-
-      if (resEarnings) {
-        setData(resEarnings);
-        await store.setJSON(CACHE_KEY, resEarnings);
-      }
-
-      if (resMe?.success) {
-        setCompletedOrders(resMe.earnings?.history ?? []);
-        setOrderTotalEarnings(resMe.earnings?.totalEarnings ?? 0);
-        await store.setJSON(CACHE_KEY + '.me', resMe);
-      }
-
+      const res = await api.earnings(id);
+      setData(res);
       setOffline(false);
+      // Metadata only, per the 18.15.1 cache table — the PDF is fetched on demand.
+      await store.setJSON(CACHE_KEY, res);
     } catch {
-      const [cachedEarnings, cachedMe] = await Promise.all([
-        store.getJSON<EarningsResponse | null>(CACHE_KEY, null),
-        store.getJSON<any | null>(CACHE_KEY + '.me', null),
-      ]);
-      if (cachedEarnings) setData(cachedEarnings);
-      if (cachedMe) {
-        setCompletedOrders(cachedMe.earnings?.history ?? []);
-        setOrderTotalEarnings(cachedMe.earnings?.totalEarnings ?? 0);
-      }
+      const cached = await store.getJSON<EarningsResponse | null>(CACHE_KEY, null);
+      if (cached) setData(cached);
       setOffline(true);
     } finally {
       setLoading(false);
@@ -95,16 +75,11 @@ export default function EarningsScreen() {
   }, [guard]);
 
   useEffect(() => {
-    Promise.all([
-      store.getJSON<EarningsResponse | null>(CACHE_KEY, null),
-      store.getJSON<any | null>(CACHE_KEY + '.me', null),
-    ]).then(([cachedEarnings, cachedMe]) => {
-      if (cachedEarnings) setData(cachedEarnings);
-      if (cachedMe) {
-        setCompletedOrders(cachedMe.earnings?.history ?? []);
-        setOrderTotalEarnings(cachedMe.earnings?.totalEarnings ?? 0);
+    store.getJSON<EarningsResponse | null>(CACHE_KEY, null).then((c) => {
+      if (c) {
+        setData(c);
+        setLoading(false);
       }
-      if (cachedEarnings || cachedMe) setLoading(false);
     });
     load();
   }, [load]);
@@ -161,7 +136,7 @@ export default function EarningsScreen() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
+        <Pressable onPress={() => goBack()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <H2>{t('earnings.title')}</H2>
@@ -187,90 +162,29 @@ export default function EarningsScreen() {
         </Card>
       ) : (
         <>
-          {/* Wallet & Combined Earnings Hero */}
-          <Card style={styles.walletHeroCard}>
-            <View style={styles.rowBetween}>
-              <View style={styles.rowGap}>
-                <Ionicons name="wallet" size={20} color={colors.primary} />
-                <Text style={styles.walletTitle}>Total Guard Earnings & Wallet</Text>
-              </View>
-              <Text style={styles.walletBadge}>Live Balance</Text>
-            </View>
-
-            <Text style={styles.totalWalletValue}>
-              ₹{(Math.floor((headline || 0) / 100) + orderTotalEarnings).toLocaleString('en-IN')}
-            </Text>
-
-            <View style={styles.walletBreakdown}>
-              <View style={styles.walletPill}>
-                <Text style={styles.walletPillLabel}>Completed Orders:</Text>
-                <Text style={styles.walletPillVal}>+₹{orderTotalEarnings.toLocaleString('en-IN')}</Text>
-              </View>
-              <View style={styles.walletPill}>
-                <Text style={styles.walletPillLabel}>Rostered Month Wage:</Text>
-                <Text style={styles.walletPillVal}>{rupees(headline)}</Text>
-              </View>
-            </View>
-          </Card>
-
-          {/* Completed Orders Payouts Section */}
-          <View style={{ gap: space.sm }}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.sectionHeader}>Completed Orders Payouts ({completedOrders.length})</Text>
-              <Text style={styles.sectionTotal}>+₹{orderTotalEarnings.toLocaleString('en-IN')}</Text>
-            </View>
-
-            {completedOrders.length === 0 ? (
-              <Card style={{ paddingVertical: space.lg, alignItems: 'center' }}>
-                <Ionicons name="receipt-outline" size={28} color={colors.textFaint} />
-                <Muted style={{ textAlign: 'center', marginTop: 4 }}>No completed order payouts yet</Muted>
-              </Card>
-            ) : (
-              completedOrders.slice(0, 5).map((o) => (
-                <Card key={o.bookingId} style={styles.orderPayoutRow}>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={styles.orderId}>#{o.bookingId}</Text>
-                      <Text style={styles.orderService}>{o.serviceType}</Text>
-                    </View>
-                    <Text style={styles.orderCustomer}>{o.customerName}</Text>
-                    <Text style={styles.orderMeta}>
-                      {o.scheduledDate ? `${o.scheduledDate} · ` : ''}{o.duration} hrs
-                      {o.rating ? ` · ⭐ ${o.rating.score}/5` : ''}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                    <Text style={styles.orderAmount}>+₹{o.earned.toLocaleString('en-IN')}</Text>
-                    <Text style={styles.orderPaidBadge}>Settled</Text>
-                  </View>
-                </Card>
-              ))
-            )}
-          </View>
-
-          {/* Roster Monthly Wage Section */}
+          {/* The one very large number (PRD 18.13 §5) */}
           <Card style={styles.hero}>
-            <View style={styles.rowBetween}>
-              <Muted>{monthName(data?.period ?? '', lang)} (Roster)</Muted>
-              {current ? (
-                <View style={styles.rowGap}>
-                  <Ionicons
-                    name={current.status === 'Completed' ? 'checkmark-circle' : 'time'}
-                    size={16}
-                    color={current.status === 'Completed' ? colors.onDuty : colors.warning}
-                  />
-                  <Text style={[styles.status, { color: current.status === 'Completed' ? colors.onDuty : colors.warning }]}>
-                    {current.status === 'Completed' ? t('earnings.paid') : t('earnings.notYetPaid')}
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.estimateBadge}>
-                  <Ionicons name="information-circle" size={14} color={colors.warning} />
-                  <Text style={styles.estimateText}>{t('earnings.estimated')}</Text>
-                </View>
-              )}
-            </View>
+            <Muted>{monthName(data?.period ?? '', lang)}</Muted>
             <Text style={styles.heroValue}>{rupees(headline)}</Text>
+
+            {current ? (
+              <View style={styles.rowGap}>
+                <Ionicons
+                  name={current.status === 'Completed' ? 'checkmark-circle' : 'time'}
+                  size={18}
+                  color={current.status === 'Completed' ? colors.onDuty : colors.warning}
+                />
+                <Text style={[styles.status, { color: current.status === 'Completed' ? colors.onDuty : colors.warning }]}>
+                  {current.status === 'Completed' ? t('earnings.paid') : t('earnings.notYetPaid')}
+                </Text>
+              </View>
+            ) : (
+              // The label that stops the number being mistaken for settled pay.
+              <View style={styles.estimateBadge}>
+                <Ionicons name="information-circle" size={16} color={colors.warning} />
+                <Text style={styles.estimateText}>{t('earnings.estimated')}</Text>
+              </View>
+            )}
           </Card>
 
           {est ? (
@@ -580,57 +494,4 @@ const styles = StyleSheet.create({
   bar: { width: 22, backgroundColor: colors.primary, borderRadius: radius.sm },
   barLabel: { color: colors.textFaint, fontSize: font.tiny, fontWeight: '700' },
   pdfError: { color: colors.warning, fontSize: font.label, textAlign: 'center' },
-  walletHeroCard: {
-    backgroundColor: 'rgba(245, 198, 35, 0.05)',
-    borderColor: 'rgba(245, 198, 35, 0.3)',
-    borderWidth: 1.5,
-    borderRadius: radius.lg,
-    padding: space.lg,
-    gap: space.sm,
-  },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  walletTitle: { color: colors.text, fontSize: font.label, fontWeight: '800' },
-  walletBadge: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.primary,
-    backgroundColor: 'rgba(245, 198, 35, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radius.pill,
-  },
-  totalWalletValue: { color: colors.text, fontSize: 36, fontWeight: '900', letterSpacing: -0.5 },
-  walletBreakdown: {
-    flexDirection: 'row',
-    gap: space.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: space.sm,
-  },
-  walletPill: { flex: 1, gap: 1 },
-  walletPillLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '700' },
-  walletPillVal: { color: colors.onDuty, fontSize: font.label, fontWeight: '900' },
-  sectionHeader: { color: colors.text, fontSize: font.label + 1, fontWeight: '900' },
-  sectionTotal: { color: colors.onDuty, fontSize: font.label, fontWeight: '900' },
-  orderPayoutRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: space.md,
-    gap: space.md,
-  },
-  orderId: { color: colors.textMuted, fontSize: 11, fontFamily: 'monospace', fontWeight: '800' },
-  orderService: { color: colors.primary, fontSize: 11, fontWeight: '700' },
-  orderCustomer: { color: colors.text, fontSize: font.body, fontWeight: '800' },
-  orderMeta: { color: colors.textMuted, fontSize: 11 },
-  orderAmount: { color: colors.onDuty, fontSize: font.body, fontWeight: '900' },
-  orderPaidBadge: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: colors.onDuty,
-    backgroundColor: colors.onDutyDim,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: radius.pill,
-  },
 });

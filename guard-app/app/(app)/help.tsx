@@ -11,6 +11,7 @@ import { successFeedback } from '@/lib/feedback';
 import { api, ApiError, type EscalationContact, type SupportTicket, type TicketCategory } from '@/lib/api';
 import { captureMedia } from '@/lib/media';
 import { guardId, useAuth } from '@/store/auth';
+import { goBack } from '@/lib/navigation';
 import { useDuty } from '@/store/duty';
 import { useVersion } from '@/store/version';
 import { colors, font, radius, space, touch } from '@/theme';
@@ -154,7 +155,7 @@ export default function Help() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
+        <Pressable onPress={() => goBack()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <H2>{t('help.title')}</H2>

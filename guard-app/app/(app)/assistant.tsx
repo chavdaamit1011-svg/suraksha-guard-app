@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { goBack } from '@/lib/navigation';
 import { H2, Muted } from '@/components/ui';
 import { useI18n, useT } from '@/i18n';
 import { api } from '@/lib/api';
@@ -63,7 +64,7 @@ export default function Assistant() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <View style={styles.head}>
-        <Ionicons name="arrow-back" size={24} color={colors.text} onPress={() => router.back()} />
+        <Ionicons name="arrow-back" size={24} color={colors.text} onPress={() => goBack()} />
         <H2>{t('assistant.title')}</H2>
         <View style={{ width: 24 }} />
       </View>

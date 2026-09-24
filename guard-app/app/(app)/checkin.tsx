@@ -20,6 +20,7 @@ import { successFeedback } from '@/lib/feedback';
 import { captureMedia, hashFile } from '@/lib/media';
 import { checkFace, type FaceVerdict } from '@/lib/native';
 import { enqueue } from '@/lib/queue';
+import { goBack } from '@/lib/navigation';
 import { guardId, useAuth } from '@/store/auth';
 import { useDuty } from '@/store/duty';
 import { colors, font, radius, space, touch } from '@/theme';
@@ -365,7 +366,7 @@ export default function CheckIn() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
+        <Pressable onPress={() => goBack()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <H2>{isIn ? t('duty.checkIn') : t('duty.checkOut')}</H2>

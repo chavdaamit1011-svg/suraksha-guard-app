@@ -17,6 +17,7 @@ import { quickFix } from '@/lib/location';
 import { nfcState, openNfcSettings, startNfc, type NfcState } from '@/lib/native';
 import { enqueue } from '@/lib/queue';
 import { guardId, useAuth } from '@/store/auth';
+import { goBack } from '@/lib/navigation';
 import { useDuty } from '@/store/duty';
 import { colors, font, radius, space, touch } from '@/theme';
 
@@ -320,7 +321,7 @@ export default function Patrol() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
+        <Pressable onPress={() => goBack()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <H2>{t('patrol.title')}</H2>

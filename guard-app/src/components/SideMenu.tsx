@@ -20,7 +20,6 @@ type Item = { route: string; icon: keyof typeof Ionicons.glyphMap; key: string }
 const ACCOUNT: Item[] = [
   { route: '/profile', icon: 'person-outline', key: 'profile.title' },
   { route: '/roster', icon: 'calendar-outline', key: 'duty.roster' },
-  { route: '/earnings', icon: 'wallet-outline', key: 'earnings.title' },
   { route: '/details', icon: 'create-outline', key: 'details.title' },
 ];
 

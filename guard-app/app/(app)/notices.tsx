@@ -6,6 +6,7 @@ import { Body, Button, Card, H2, Muted, Screen } from '@/components/ui';
 import { useT } from '@/i18n';
 import { api } from '@/lib/api';
 import { guardId, useAuth } from '@/store/auth';
+import { goBack } from '@/lib/navigation';
 import { colors, font, space } from '@/theme';
 
 type Notice = {
@@ -62,7 +63,7 @@ export default function Notices() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Ionicons name="arrow-back" size={24} color={colors.text} onPress={() => router.back()} />
+        <Ionicons name="arrow-back" size={24} color={colors.text} onPress={() => goBack()} />
         <H2>{t('notices.title')}</H2>
         <View style={{ width: 24 }} />
       </View>

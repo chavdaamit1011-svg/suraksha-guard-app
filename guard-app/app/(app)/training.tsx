@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Body, Button, Card, H2, Muted, Screen } from '@/components/ui';
+import { goBack } from '@/lib/navigation';
 import { useI18n, useT } from '@/i18n';
 import {
   api,
@@ -371,7 +372,7 @@ export default function Training() {
 
   return (
     <Screen>
-      <Header title={t('training.title')} onBack={() => router.back()} />
+      <Header title={t('training.title')} onBack={() => goBack()} />
 
       {outstanding > 0 ? (
         <View style={styles.noticeBox}>

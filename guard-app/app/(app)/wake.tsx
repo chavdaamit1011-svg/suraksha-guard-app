@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Muted, Screen } from '@/components/ui';
+import { goBack } from '@/lib/navigation';
 import { useT } from '@/i18n';
 import type { WakeCheck } from '@/lib/api';
 import { useBrightScreen } from '@/lib/brightness';
@@ -252,7 +253,7 @@ export default function Wake() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
+        <Pressable onPress={() => goBack()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <Text style={styles.headTitle}>{t('wake.title')}</Text>

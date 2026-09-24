@@ -8,6 +8,7 @@ import { useT } from '@/i18n';
 import { api, type OfferOutcome, type ReplacementOffer } from '@/lib/api';
 import { formatCountdown } from '@/lib/duty';
 import { guardId, useAuth } from '@/store/auth';
+import { goBack } from '@/lib/navigation';
 import { useDuty } from '@/store/duty';
 import { useVersion } from '@/store/version';
 import { FeatureOffNotice } from '@/components/UpdateNotice';
@@ -122,7 +123,7 @@ export default function Offers() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
+        <Pressable onPress={() => goBack()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <H2>{t('offers.title')}</H2>
