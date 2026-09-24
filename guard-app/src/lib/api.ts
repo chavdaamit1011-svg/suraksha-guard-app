@@ -381,12 +381,6 @@ export type Payslip = {
   carriedForwardPaise: number;
   paidOn: string | null;
   referenceNo: string;
-  bookingId?: string;
-  serviceName?: string;
-  siteName?: string;
-  clientRating?: number;
-  clientReview?: string;
-  date?: string;
 };
 
 /** The running month, computed from attendance. Never to be shown as settled pay. */
@@ -410,9 +404,6 @@ export type EarningsResponse = {
   success: boolean;
   period: string;
   monthlyWagePaise: number;
-  totalEarnedPaise?: number;
-  completedOrdersCount?: number;
-  averageRating?: number;
   /** Null once payroll has finalised the period. */
   estimate: EarningsEstimate | null;
   payslips: Payslip[];
@@ -516,10 +507,6 @@ export type RosterShift = {
   checkedInAt: string | null;
   checkedOutAt: string | null;
   lateByMin: number;
-  bookingId?: string;
-  payout?: number;
-  clientRating?: number;
-  clientReview?: string;
 };
 
 export const api = {

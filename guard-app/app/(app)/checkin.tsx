@@ -1,3 +1,4 @@
+import { goBack } from '@/lib/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 import * as Battery from 'expo-battery';
@@ -365,7 +366,7 @@ export default function CheckIn() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
+        <Pressable onPress={() => goBack()} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <H2>{isIn ? t('duty.checkIn') : t('duty.checkOut')}</H2>

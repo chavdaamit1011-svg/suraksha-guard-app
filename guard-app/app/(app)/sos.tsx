@@ -1,3 +1,4 @@
+import { goBack } from '@/lib/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
@@ -139,7 +140,7 @@ export default function Sos() {
         </View>
         <View style={styles.foot}>
           <Button label={t('sos.sendNow')} variant="danger" size="huge" onPress={() => setPhase('active')} />
-          <Button label={t('common.cancel')} variant="ghost" onPress={() => router.back()} />
+          <Button label={t('common.cancel')} variant="ghost" onPress={() => goBack()} />
         </View>
       </SafeAreaView>
     );

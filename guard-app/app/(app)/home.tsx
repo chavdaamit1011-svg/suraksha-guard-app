@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Body, Button, Card, H2, Muted, Screen, StatusBand } from '@/components/ui';
 import { SideMenu } from '@/components/SideMenu';
 import { UpdateNotice } from '@/components/UpdateNotice';
@@ -80,6 +80,19 @@ export default function DutyHome() {
   const [menuOpen, setMenuOpen] = useState(false);
   const unreadNotices = alerts.find((a: DutyAlert) => a.key === 'notices')?.count ?? 0;
   const watch = useRef<Location.LocationSubscription | null>(null);
+
+  // Safely handle back button on Home screen to prevent unhandled GO_BACK warning
+  useEffect(() => {
+    const onBackPress = () => {
+      if (menuOpen) {
+        setMenuOpen(false);
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [menuOpen]);
 
   /**
    * Location streams only while a duty is actually running — PRD 18.15.7 and §39 make this a

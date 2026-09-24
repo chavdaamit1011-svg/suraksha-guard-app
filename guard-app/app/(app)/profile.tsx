@@ -1,3 +1,4 @@
+import { goBack } from '@/lib/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
@@ -18,7 +19,7 @@ export default function Profile() {
   return (
     <Screen>
       <View style={styles.head}>
-        <Ionicons name="arrow-back" size={24} color={colors.text} onPress={() => router.back()} />
+        <Ionicons name="arrow-back" size={24} color={colors.text} onPress={() => goBack()} />
         <H2>{t('profile.title')}</H2>
         <View style={{ width: 24 }} />
       </View>

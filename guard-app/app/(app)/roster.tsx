@@ -1,3 +1,4 @@
+import { goBack } from '@/lib/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
@@ -9,7 +10,6 @@ import { api, type RosterShift } from '@/lib/api';
 import { istTime } from '@/lib/duty';
 import { KEYS, store } from '@/lib/storage';
 import { guardId, useAuth } from '@/store/auth';
-import { goBack } from '@/lib/navigation';
 import { colors, font, radius, space } from '@/theme';
 
 const CACHE_KEY = 'sg.roster';
@@ -23,8 +23,13 @@ const STATUS_TONE: Record<RosterShift['status'], { color: string; icon: keyof ty
 };
 
 /**
- * The guard's roster & duty orders (PRD 18.4).
- * Cleanly displays scheduled duties, client orders, payouts, and client ratings.
+ * The guard's 7-day roster (PRD 18.4 GAP-S-014).
+ *
+ * A vertical list of days, not a calendar grid — a month view is unreadable on a 720×1280 screen
+ * held one-handed at a gate, and the only question this screen answers is "when and where am I
+ * next working?".
+ *
+ * Cached, so it still renders offline like every other duty surface (18.15.2).
  */
 export default function Roster() {
   const t = useT();
@@ -36,13 +41,12 @@ export default function Roster() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [offline, setOffline] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'completed' | 'scheduled'>('all');
 
   const load = useCallback(async () => {
     const id = guardId(guard);
     if (!id) return;
     try {
-      const res = await api.roster(id, { days: 60 });
+      const res = await api.roster(id, { days: 9 });
       setShifts(res.shifts ?? []);
       setToday(res.today);
       setOffline(false);
@@ -84,20 +88,6 @@ export default function Roster() {
     });
   };
 
-  const completedShifts = shifts.filter((s) => s.status === 'Completed');
-  const scheduledShifts = shifts.filter((s) => s.status !== 'Completed');
-  const totalEarned = completedShifts.reduce((acc, s) => acc + (s.payout || 0), 0);
-  const ratedShifts = completedShifts.filter((s) => typeof s.clientRating === 'number' && s.clientRating >= 1 && s.clientRating <= 5);
-  const avgRating = ratedShifts.length > 0
-    ? (ratedShifts.reduce((acc, s) => acc + (s.clientRating || 5), 0) / ratedShifts.length).toFixed(1)
-    : '5.0';
-
-  const visibleShifts = filter === 'completed'
-    ? completedShifts
-    : filter === 'scheduled'
-    ? scheduledShifts
-    : shifts;
-
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <View style={styles.head}>
@@ -114,53 +104,6 @@ export default function Roster() {
           <Text style={styles.offlineText}>{t('offlineBanner')}</Text>
         </View>
       ) : null}
-
-      {/* KPI Summary Cards */}
-      <View style={styles.kpiRow}>
-        <Card style={styles.kpiCard}>
-          <Ionicons name="checkmark-done-circle" size={18} color={colors.onDuty} />
-          <Text style={styles.kpiVal}>{completedShifts.length}</Text>
-          <Muted style={styles.kpiLbl}>Completed</Muted>
-        </Card>
-        <Card style={styles.kpiCard}>
-          <Ionicons name="wallet" size={18} color={colors.primary} />
-          <Text style={styles.kpiVal}>₹{totalEarned.toLocaleString('en-IN')}</Text>
-          <Muted style={styles.kpiLbl}>Earned</Muted>
-        </Card>
-        <Card style={styles.kpiCard}>
-          <Ionicons name="star" size={18} color={colors.warning} />
-          <Text style={styles.kpiVal}>⭐ {avgRating}</Text>
-          <Muted style={styles.kpiLbl}>Rating</Muted>
-        </Card>
-      </View>
-
-      {/* Filter Tabs */}
-      <View style={styles.tabsRow}>
-        <Pressable
-          style={[styles.tabBtn, filter === 'all' && styles.tabBtnActive]}
-          onPress={() => setFilter('all')}
-        >
-          <Text style={[styles.tabTxt, filter === 'all' && styles.tabTxtActive]}>
-            All ({shifts.length})
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.tabBtn, filter === 'completed' && styles.tabBtnActive]}
-          onPress={() => setFilter('completed')}
-        >
-          <Text style={[styles.tabTxt, filter === 'completed' && styles.tabTxtActive]}>
-            Completed ({completedShifts.length})
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.tabBtn, filter === 'scheduled' && styles.tabBtnActive]}
-          onPress={() => setFilter('scheduled')}
-        >
-          <Text style={[styles.tabTxt, filter === 'scheduled' && styles.tabTxtActive]}>
-            Upcoming ({scheduledShifts.length})
-          </Text>
-        </Pressable>
-      </View>
 
       <ScrollView
         contentContainerStyle={styles.list}
@@ -180,96 +123,43 @@ export default function Roster() {
             <ActivityIndicator color={colors.primary} />
             <Muted>{t('common.loading')}</Muted>
           </Card>
-        ) : visibleShifts.length === 0 ? (
+        ) : shifts.length === 0 ? (
           <Card style={styles.center}>
             <Ionicons name="calendar-outline" size={36} color={colors.textFaint} />
             <Muted style={{ textAlign: 'center' }}>{t('duty.noShifts')}</Muted>
           </Card>
         ) : (
-          visibleShifts.map((s) => {
+          shifts.map((s) => {
             const tone = STATUS_TONE[s.status] ?? STATUS_TONE.Scheduled;
             const isToday = s.date === today;
-            const isDone = s.status === 'Completed';
-
             return (
-              <Card
-                key={s.rosterId}
-                style={{
-                  ...styles.orderCard,
-                  ...(isToday ? { borderColor: colors.primary } : null),
-                }}
-              >
-                {/* Header: Date + Payout + Status */}
-                <View style={styles.cardHeader}>
-                  <View style={styles.dateBadge}>
-                    <Ionicons name="calendar-outline" size={13} color={colors.primary} />
-                    <Text style={[styles.dayText, isToday && { color: colors.primary }]}>
-                      {dayLabel(s.date)} · {s.start}–{s.end}
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-                    {s.payout ? (
-                      <View style={styles.payoutBadge}>
-                        <Text style={styles.payoutText}>+₹{s.payout.toLocaleString('en-IN')}</Text>
-                      </View>
-                    ) : null}
-                    <View style={[styles.statusBadge, { backgroundColor: `${tone.color}20` }]}>
-                      <Ionicons name={tone.icon} size={12} color={tone.color} />
-                      <Text style={[styles.statusText, { color: tone.color }]}>{s.status}</Text>
-                    </View>
-                  </View>
+              <Card key={s.rosterId} style={{ ...styles.row, ...(isToday ? { borderColor: colors.primary } : null) }}>
+                <View style={styles.dayCol}>
+                  <Text style={[styles.day, isToday && { color: colors.primary }]}>{dayLabel(s.date)}</Text>
+                  <Text style={styles.time}>
+                    {s.start}–{s.end}
+                  </Text>
+                  {s.crossesMidnight ? <Muted>{t('roster.overnight')}</Muted> : null}
                 </View>
 
-                {/* Duty / Service Details */}
-                <View style={{ gap: 2 }}>
-                  <Text style={styles.orderTitle} numberOfLines={1}>
-                    {s.bookingId ? `Order #${s.bookingId}` : s.siteName}
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={styles.site} numberOfLines={1}>
+                    {s.siteName}
                   </Text>
-                  <Text style={styles.serviceName}>
-                    {s.shiftType || 'Security Guard Duty'}
-                  </Text>
-                  {s.address ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                      <Ionicons name="location-outline" size={13} color={colors.textFaint} />
-                      <Muted numberOfLines={1} style={{ flex: 1 }}>{s.address}</Muted>
-                    </View>
-                  ) : null}
-                </View>
-
-                {/* Checked in info */}
-                {s.checkedInAt ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Ionicons name="time-outline" size={12} color={colors.onDuty} />
+                  {s.shiftType ? <Muted>{s.shiftType}</Muted> : null}
+                  {s.checkedInAt ? (
                     <Muted style={{ color: colors.onDuty }}>
                       {t('duty.checkedInAt')} {istTime(s.checkedInAt)}
-                      {s.checkedOutAt ? ` · Completed ${istTime(s.checkedOutAt)}` : ''}
+                      {s.lateByMin > 0 ? ` · +${s.lateByMin}m` : ''}
                     </Muted>
-                  </View>
-                ) : null}
+                  ) : null}
+                  {s.isReliever ? <Muted style={{ color: colors.info }}>{t('duty.reliever')}</Muted> : null}
+                </View>
 
-                {/* Client Review & Rating if present */}
-                {s.clientRating ? (
-                  <View style={styles.reviewBox}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text style={styles.reviewHeading}>Client Review</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <Ionicons
-                            key={i}
-                            name={i < (s.clientRating ?? 0) ? 'star' : 'star-outline'}
-                            size={12}
-                            color={colors.warning}
-                          />
-                        ))}
-                        <Text style={styles.ratingNumber}>{s.clientRating}.0</Text>
-                      </View>
-                    </View>
-                    {s.clientReview ? (
-                      <Text style={styles.reviewComment}>&quot;{s.clientReview}&quot;</Text>
-                    ) : null}
-                  </View>
-                ) : null}
+                <View style={styles.statusCol}>
+                  <Ionicons name={tone.icon} size={22} color={tone.color} />
+                  <Text style={[styles.status, { color: tone.color }]}>{s.status}</Text>
+                </View>
               </Card>
             );
           })
@@ -295,98 +185,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warningDim,
     borderRadius: radius.sm,
     marginHorizontal: space.lg,
-    marginBottom: space.sm,
     padding: space.md,
   },
   offlineText: { color: colors.warning, fontSize: font.tiny, fontWeight: '700', flex: 1 },
-  kpiRow: {
-    flexDirection: 'row',
-    gap: space.sm,
-    paddingHorizontal: space.lg,
-    marginBottom: space.sm,
-  },
-  kpiCard: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: space.sm,
-    paddingHorizontal: space.xs,
-    gap: 2,
-  },
-  kpiVal: { color: colors.text, fontSize: font.body, fontWeight: '900' },
-  kpiLbl: { fontSize: font.tiny, textTransform: 'uppercase', letterSpacing: 0.5 },
-  tabsRow: {
-    flexDirection: 'row',
-    gap: space.xs,
-    paddingHorizontal: space.lg,
-    marginBottom: space.xs,
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: space.sm,
-    alignItems: 'center',
-    borderRadius: radius.sm,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  tabBtnActive: {
-    backgroundColor: 'rgba(234,179,8,0.12)',
-    borderColor: colors.primary,
-  },
-  tabTxt: {
-    color: colors.textMuted,
-    fontSize: font.tiny,
-    fontWeight: '700',
-  },
-  tabTxtActive: {
-    color: colors.primary,
-    fontWeight: '900',
-  },
   list: { padding: space.lg, gap: space.md },
   center: { alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingVertical: space.xxl },
-  orderCard: { gap: space.sm, padding: space.md },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: space.xs,
-    paddingBottom: space.xs,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  dateBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  dayText: { color: colors.textMuted, fontSize: font.tiny, fontWeight: '800' },
-  payoutBadge: {
-    backgroundColor: 'rgba(5,150,105,0.15)',
-    paddingHorizontal: space.xs + 2,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  payoutText: { color: colors.onDuty, fontSize: font.tiny, fontWeight: '900' },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: space.xs + 2,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  statusText: { fontSize: font.tiny, fontWeight: '800' },
-  orderTitle: { color: colors.text, fontSize: font.body, fontWeight: '900' },
-  serviceName: { color: colors.primary, fontSize: font.label, fontWeight: '700' },
-  reviewBox: {
-    backgroundColor: 'rgba(217,119,6,0.08)',
-    borderRadius: radius.sm,
-    padding: space.sm,
-    gap: 2,
-    marginTop: 2,
-  },
-  reviewHeading: { color: colors.text, fontSize: font.tiny, fontWeight: '800' },
-  ratingNumber: { color: colors.warning, fontSize: font.tiny, fontWeight: '800', marginLeft: 2 },
-  reviewComment: { color: colors.textMuted, fontSize: font.tiny, fontStyle: 'italic', marginTop: 2 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  dayCol: { width: 92, gap: 2 },
+  day: { color: colors.text, fontSize: font.label, fontWeight: '900' },
+  time: { color: colors.textMuted, fontSize: font.label, fontWeight: '700' },
+  site: { color: colors.text, fontSize: font.body, fontWeight: '800' },
+  statusCol: { alignItems: 'center', gap: 2, width: 72 },
+  status: { fontSize: font.tiny, fontWeight: '800', textAlign: 'center' },
 });

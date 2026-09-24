@@ -1,3 +1,4 @@
+import { goBack } from '@/lib/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
@@ -92,7 +93,7 @@ export default function Team() {
   if (loading) {
     return (
       <Screen>
-        <Header onBack={() => router.back()} title={t('team.title')} />
+        <Header onBack={() => goBack()} title={t('team.title')} />
         <Card style={styles.center}>
           <ActivityIndicator color={colors.primary} />
           <Muted>{t('common.loading')}</Muted>
@@ -104,7 +105,7 @@ export default function Team() {
   if (!data?.isSupervisor) {
     return (
       <Screen>
-        <Header onBack={() => router.back()} title={t('team.title')} />
+        <Header onBack={() => goBack()} title={t('team.title')} />
         <Card style={styles.center}>
           <Ionicons name="people-outline" size={36} color={colors.textFaint} />
           <Muted style={{ textAlign: 'center' }}>{t('team.notSupervisor')}</Muted>
@@ -135,7 +136,7 @@ export default function Team() {
 
   return (
     <Screen>
-      <Header onBack={() => router.back()} title={t('team.title')} />
+      <Header onBack={() => goBack()} title={t('team.title')} />
 
       {/* The numbers a supervisor scans first */}
       <View style={styles.stats}>

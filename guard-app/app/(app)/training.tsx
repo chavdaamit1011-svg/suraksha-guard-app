@@ -1,3 +1,4 @@
+import { goBack } from '@/lib/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
@@ -371,7 +372,7 @@ export default function Training() {
 
   return (
     <Screen>
-      <Header title={t('training.title')} onBack={() => router.back()} />
+      <Header title={t('training.title')} onBack={() => goBack()} />
 
       {outstanding > 0 ? (
         <View style={styles.noticeBox}>

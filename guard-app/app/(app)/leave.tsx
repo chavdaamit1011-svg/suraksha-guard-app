@@ -1,3 +1,4 @@
+import { goBack } from '@/lib/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { AudioModule, RecordingPresets, useAudioRecorder } from 'expo-audio';
 import * as Crypto from 'expo-crypto';
@@ -194,7 +195,7 @@ export default function Leave() {
   if (leaveOff) {
     return (
       <Screen>
-        <Header title={t('leave.title')} onBack={() => router.back()} />
+        <Header title={t('leave.title')} onBack={() => goBack()} />
         <FeatureOffNotice />
       </Screen>
     );
@@ -203,7 +204,7 @@ export default function Leave() {
   if (done) {
     return (
       <Screen>
-        <Header title={t('leave.title')} onBack={() => router.back()} />
+        <Header title={t('leave.title')} onBack={() => goBack()} />
         <Card style={{ borderColor: colors.onDuty, backgroundColor: colors.onDutyDim, alignItems: 'center', gap: space.md }}>
           <Ionicons name="checkmark-circle" size={56} color={colors.onDuty} />
           <H2>{t('leave.success')}</H2>
@@ -218,7 +219,7 @@ export default function Leave() {
 
   return (
     <Screen>
-      <Header title={t('leave.title')} onBack={() => router.back()} />
+      <Header title={t('leave.title')} onBack={() => goBack()} />
 
       {/* 1 — type */}
       <View style={styles.typeRow}>

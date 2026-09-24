@@ -1,3 +1,4 @@
+import { goBack } from '@/lib/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Crypto from 'expo-crypto';
@@ -345,7 +346,7 @@ export default function Details() {
 
   return (
     <Screen>
-      <Header title={t('details.title')} onBack={() => router.back()} />
+      <Header title={t('details.title')} onBack={() => goBack()} />
 
       {notice ? (
         <Card style={{ borderColor: colors.onDuty, backgroundColor: colors.onDutyDim }}>
