@@ -90,13 +90,39 @@ export default function Briefing() {
         <Row icon="location" label={t('duty.site')} value={siteName} />
         <Row icon="shield" label={t('duty.post')} value={post} />
         <Row icon="time" label={t('duty.shift')} value={shift} />
+        {booking?.serviceRequirements?.eventType ? (
+          <Row icon="calendar" label="Event" value={booking.serviceRequirements.eventType} />
+        ) : null}
+        {booking?.serviceRequirements?.dressRequirement ? (
+          <Row icon="shirt" label="Dress Code" value={booking.serviceRequirements.dressRequirement} />
+        ) : current?.site.uniformRequired ? (
+          <Row icon="shirt" label={t('briefing.uniform')} value={current.site.uniformRequired} />
+        ) : null}
+        {booking?.serviceRequirements?.purpose ? (
+          <Row icon="information-circle" label="Purpose" value={booking.serviceRequirements.purpose} />
+        ) : null}
         {current?.site.reportingPoint ? (
           <Row icon="flag" label={t('briefing.reportAt')} value={current.site.reportingPoint} />
         ) : null}
-        {current?.site.uniformRequired ? (
-          <Row icon="shirt" label={t('briefing.uniform')} value={current.site.uniformRequired} />
-        ) : null}
       </Card>
+
+      {/* Special Instructions from Client */}
+      {(booking?.serviceRequirements?.specialInstructions || booking?.specialInstructions) ? (
+        <View style={{ gap: space.sm }}>
+          <Muted>Client Special Instructions</Muted>
+          <Card style={{ borderColor: 'rgba(245, 198, 35, 0.4)', backgroundColor: 'rgba(245, 198, 35, 0.05)' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <Ionicons name="document-text" size={16} color={colors.warning} />
+              <Text style={{ fontSize: 11, fontWeight: '800', color: colors.warning, textTransform: 'uppercase' }}>
+                Client Note / Special Instructions
+              </Text>
+            </View>
+            <Body style={{ fontStyle: 'italic', color: colors.text, lineHeight: 20 }}>
+              "{booking?.serviceRequirements?.specialInstructions || booking?.specialInstructions}"
+            </Body>
+          </Card>
+        </View>
+      ) : null}
 
       {/* Equipment checklist */}
       {current && current.site.equipmentRequired.length > 0 ? (

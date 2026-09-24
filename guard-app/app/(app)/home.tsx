@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Body, Button, Card, H2, Muted, Screen, StatusBand } from '@/components/ui';
 import { SideMenu } from '@/components/SideMenu';
 import { UpdateNotice } from '@/components/UpdateNotice';
@@ -398,16 +398,64 @@ function PrimaryAction({
   const { duty, current, booking, online } = useDuty();
 
   if (isOffer) {
+    const reqs = booking?.serviceRequirements || {};
+    const instructions = reqs.specialInstructions || booking?.specialInstructions;
     return (
       <Card style={{ borderColor: colors.warning }}>
         <View style={styles.rowBetween}>
           <H2>{t('duty.newRequest')}</H2>
           <Ionicons name="notifications" size={22} color={colors.warning} />
         </View>
-        <Body>
+        <Body style={{ fontWeight: '800', marginTop: 4 }}>
           {booking?.customerName ?? 'Client'} · {booking?.serviceType ?? 'Guarding'}
         </Body>
         <Muted>{booking?.location?.address ?? booking?.location?.city ?? ''}</Muted>
+
+        {(reqs.eventType || reqs.dressRequirement || reqs.purpose || booking?.personnelCount) ? (
+          <View style={{ backgroundColor: 'rgba(245, 198, 35, 0.08)', borderRadius: 10, padding: 10, marginVertical: 6, borderWidth: 1, borderColor: 'rgba(245, 198, 35, 0.25)' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <Ionicons name="shirt-outline" size={15} color={colors.warning} />
+              <Text style={{ fontSize: 11, fontWeight: '800', color: colors.warning, textTransform: 'uppercase' }}>
+                Event Requirements & Uniform
+              </Text>
+            </View>
+            {reqs.eventType ? (
+              <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600', marginBottom: 2 }}>
+                • Event Type: <Text style={{ color: colors.warning, fontWeight: '800' }}>{reqs.eventType}</Text>
+              </Text>
+            ) : null}
+            {reqs.dressRequirement ? (
+              <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600', marginBottom: 2 }}>
+                • Dress Preference: <Text style={{ color: colors.primary, fontWeight: '800' }}>{reqs.dressRequirement}</Text>
+              </Text>
+            ) : null}
+            {reqs.purpose ? (
+              <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600', marginBottom: 2 }}>
+                • Purpose: {reqs.purpose}
+              </Text>
+            ) : null}
+            {reqs.vehicleRequired ? (
+              <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600' }}>
+                • Vehicle Required: Yes
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {instructions ? (
+          <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 10, padding: 10, marginVertical: 4, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.15)' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <Ionicons name="document-text-outline" size={14} color={colors.warning} />
+              <Text style={{ fontSize: 10, fontWeight: '800', color: colors.warning, textTransform: 'uppercase' }}>
+                Special Instructions
+              </Text>
+            </View>
+            <Text style={{ fontSize: 12, color: colors.text, fontStyle: 'italic', lineHeight: 18 }}>
+              "{instructions}"
+            </Text>
+          </View>
+        ) : null}
+
         <Button label={t('duty.accept')} variant="success" onPress={onAccept} loading={busy} />
       </Card>
     );
@@ -549,6 +597,8 @@ function BookingCard({ booking }: { booking: any }) {
   const isActive = booking.bookingStatus === 'ACTIVE';
   const isPendingCheckin = ['ASSIGNED', 'EN_ROUTE', 'ARRIVED'].includes(booking.bookingStatus);
   const isCheckout = booking.bookingStatus === 'CHECKOUT_INITIATED';
+  const reqs = booking?.serviceRequirements || {};
+  const instructions = reqs.specialInstructions || booking?.specialInstructions;
 
   return (
     <Card style={isActive ? { borderColor: colors.onDuty } : undefined}>
@@ -564,12 +614,61 @@ function BookingCard({ booking }: { booking: any }) {
       <Body style={{ fontWeight: '800' }}>{booking.customerName || 'Client Booking'}</Body>
       <Muted>{address}</Muted>
 
+      {booking.customerPhone ? (
+        <Pressable onPress={() => Linking.openURL(`tel:${booking.customerPhone}`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginVertical: 4 }}>
+          <Ionicons name="call" size={14} color={colors.onDuty} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.onDuty }}>{booking.customerPhone}</Text>
+        </Pressable>
+      ) : null}
+
       <View style={styles.metaRow}>
         <Meta icon="briefcase" text={booking.serviceType || 'Security Service'} />
         {booking.schedule?.startTime ? (
           <Meta icon="time" text={`${booking.schedule.startTime}${booking.schedule.endTime ? `–${booking.schedule.endTime}` : ''}`} />
         ) : null}
       </View>
+
+      {/* Event Type & Dress Requirement */}
+      {(reqs.eventType || reqs.dressRequirement || reqs.purpose) ? (
+        <View style={{ backgroundColor: 'rgba(245, 198, 35, 0.08)', borderRadius: 10, padding: 10, marginVertical: 6, borderWidth: 1, borderColor: 'rgba(245, 198, 35, 0.25)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <Ionicons name="shirt-outline" size={15} color={colors.warning} />
+            <Text style={{ fontSize: 10, fontWeight: '800', color: colors.warning, textTransform: 'uppercase' }}>
+              Requirements & Dress Code
+            </Text>
+          </View>
+          {reqs.eventType ? (
+            <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600', marginBottom: 2 }}>
+              • Event Type: <Text style={{ color: colors.warning, fontWeight: '800' }}>{reqs.eventType}</Text>
+            </Text>
+          ) : null}
+          {reqs.dressRequirement ? (
+            <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600', marginBottom: 2 }}>
+              • Dress Preference: <Text style={{ color: colors.primary, fontWeight: '800' }}>{reqs.dressRequirement}</Text>
+            </Text>
+          ) : null}
+          {reqs.purpose ? (
+            <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600' }}>
+              • Purpose: {reqs.purpose}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Special Instructions Note */}
+      {instructions ? (
+        <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 10, padding: 10, marginVertical: 4, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.15)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+            <Ionicons name="document-text-outline" size={14} color={colors.warning} />
+            <Text style={{ fontSize: 10, fontWeight: '800', color: colors.warning, textTransform: 'uppercase' }}>
+              Special Instructions
+            </Text>
+          </View>
+          <Text style={{ fontSize: 12, color: colors.text, fontStyle: 'italic', lineHeight: 18 }}>
+            "{instructions}"
+          </Text>
+        </View>
+      ) : null}
 
       {isPendingCheckin ? (
         <Meta icon="key" text={t('duty.arrivalOtp')} tone={colors.warning} />

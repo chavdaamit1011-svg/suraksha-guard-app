@@ -507,6 +507,15 @@ export type RosterShift = {
   checkedInAt: string | null;
   checkedOutAt: string | null;
   lateByMin: number;
+  payout?: number;
+  clientRating?: number;
+  clientReview?: string;
+  customerName?: string;
+  customerPhone?: string;
+  serviceRequirements?: Record<string, any>;
+  eventType?: string;
+  dressRequirement?: string;
+  specialInstructions?: string;
 };
 
 export const api = {

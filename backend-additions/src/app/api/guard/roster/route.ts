@@ -156,6 +156,12 @@ export async function GET(req: Request) {
         checkedInAt: started,
         checkedOutAt: ended,
         lateByMin: 0,
+        customerName: b.customerName || '',
+        customerPhone: b.customerPhone || '',
+        serviceRequirements: b.serviceRequirements || {},
+        eventType: b.serviceRequirements?.eventType || '',
+        dressRequirement: b.serviceRequirements?.dressRequirement || '',
+        specialInstructions: b.serviceRequirements?.specialInstructions || b.specialInstructions || '',
       });
     }
 
