@@ -63,7 +63,6 @@ type DutyStore = {
   tick: () => void;
   setOnline: (v: boolean, coords?: { lat: number; lng: number }) => Promise<void>;
   accept: () => Promise<void>;
-  reject: (reason?: string) => Promise<void>;
   respondContract: (contractId: string, action: 'accept' | 'reject', reason?: string) => Promise<void>;
   pushLocation: (lat: number, lng: number, heading?: number) => Promise<void>;
   refreshQueued: () => Promise<void>;
@@ -249,14 +248,6 @@ export const useDuty = create<DutyStore>((set, get) => ({
     const b = get().booking;
     if (!id || !b) return;
     await api.acceptBooking(b.bookingId, id);
-    await get().refresh();
-  },
-
-  reject: async (reason?: string) => {
-    const id = gid(useAuth.getState().guard);
-    const b = get().booking;
-    if (!id || !b) return;
-    await api.rejectBooking(b.bookingId, id, reason);
     await get().refresh();
   },
 

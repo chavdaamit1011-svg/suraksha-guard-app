@@ -74,7 +74,6 @@ export default function DutyHome() {
     deviceStanding,
     setOnline,
     accept,
-    reject,
     respondContract,
   } = useDuty();
   const [busy, setBusy] = useState(false);
@@ -351,14 +350,6 @@ export default function DutyHome() {
             setBusy(false);
           }
         }}
-        onReject={async () => {
-          setBusy(true);
-          try {
-            await reject();
-          } finally {
-            setBusy(false);
-          }
-        }}
         onGoOnline={goOnline}
       />
 
@@ -394,14 +385,12 @@ function PrimaryAction({
   busy,
   countdown,
   onAccept,
-  onReject,
   onGoOnline,
 }: {
   isOffer: boolean;
   busy: boolean;
   countdown: string;
   onAccept: () => void;
-  onReject?: () => void;
   onGoOnline: () => void;
 }) {
   const t = useT();
@@ -409,72 +398,17 @@ function PrimaryAction({
   const { duty, current, booking, online } = useDuty();
 
   if (isOffer) {
-    const reqs = booking?.serviceRequirements || {};
-    const instructions = reqs.specialInstructions || booking?.specialInstructions;
     return (
       <Card style={{ borderColor: colors.warning }}>
         <View style={styles.rowBetween}>
           <H2>{t('duty.newRequest')}</H2>
           <Ionicons name="notifications" size={22} color={colors.warning} />
         </View>
-        <Body style={{ fontWeight: '800', marginTop: 4 }}>
+        <Body>
           {booking?.customerName ?? 'Client'} · {booking?.serviceType ?? 'Guarding'}
         </Body>
         <Muted>{booking?.location?.address ?? booking?.location?.city ?? ''}</Muted>
-
-        {(reqs.eventType || reqs.dressRequirement || reqs.purpose || booking?.personnelCount) ? (
-          <View style={{ backgroundColor: 'rgba(245, 198, 35, 0.08)', borderRadius: 10, padding: 10, marginVertical: 6, borderWidth: 1, borderColor: 'rgba(245, 198, 35, 0.25)' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-              <Ionicons name="shirt-outline" size={15} color={colors.warning} />
-              <Text style={{ fontSize: 11, fontWeight: '800', color: colors.warning, textTransform: 'uppercase' }}>
-                Event Requirements & Uniform
-              </Text>
-            </View>
-            {reqs.eventType ? (
-              <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600', marginBottom: 2 }}>
-                • Event Type: <Text style={{ color: colors.warning, fontWeight: '800' }}>{reqs.eventType}</Text>
-              </Text>
-            ) : null}
-            {reqs.dressRequirement ? (
-              <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600', marginBottom: 2 }}>
-                • Dress Preference: <Text style={{ color: colors.primary, fontWeight: '800' }}>{reqs.dressRequirement}</Text>
-              </Text>
-            ) : null}
-            {reqs.purpose ? (
-              <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600', marginBottom: 2 }}>
-                • Purpose: {reqs.purpose}
-              </Text>
-            ) : null}
-            {reqs.vehicleRequired ? (
-              <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600' }}>
-                • Vehicle Required: Yes
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-
-        {instructions ? (
-          <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 10, padding: 10, marginVertical: 4, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.15)' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-              <Ionicons name="document-text-outline" size={14} color={colors.warning} />
-              <Text style={{ fontSize: 10, fontWeight: '800', color: colors.warning, textTransform: 'uppercase' }}>
-                Special Instructions
-              </Text>
-            </View>
-            <Text style={{ fontSize: 12, color: colors.text, fontStyle: 'italic', lineHeight: 18 }}>
-              "{instructions}"
-            </Text>
-          </View>
-        ) : null}
-
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Button label="Decline" variant="danger" onPress={onReject || (() => {})} loading={busy} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button label={t('duty.accept')} variant="success" onPress={onAccept} loading={busy} />
-          </View>
-        </View>
+        <Button label={t('duty.accept')} variant="success" onPress={onAccept} loading={busy} />
       </Card>
     );
   }

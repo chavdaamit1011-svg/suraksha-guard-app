@@ -85,6 +85,14 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   setGuard: async (g, session) => {
     await secure.set(KEYS.guard, JSON.stringify(g));
+    if (g?.phone) {
+      await secure.set(KEYS.savedAccount, JSON.stringify({
+        phone: g.phone,
+        name: g.name,
+        city: g.city,
+        empId: g.empId,
+      })).catch(() => {});
+    }
     if (session) await saveSession(session.token, session.expiresAt);
     await store.setJSON(KEYS.lastLoginAt, Date.now());
     set({ guard: g, needsPin: false });
