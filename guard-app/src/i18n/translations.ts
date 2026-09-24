@@ -19,6 +19,7 @@ export const en = {
     readAloud: 'Read aloud',
     callSupervisor: 'Call supervisor',
     loading: 'Please wait…',
+    decline: 'Decline',
   },
   lang: { title: 'Choose your language', listen: 'Listen' },
   login: {
@@ -96,6 +97,7 @@ export const en = {
     briefing: 'Site briefing',
     newRequest: 'New duty request',
     accept: 'Accept',
+    decline: 'Decline',
     arrivalOtp: 'Ask the client for the arrival code',
     checkoutOtp: 'Ask the client for the check-out code',
     readyToCheckIn: 'Ready to check in',
@@ -721,6 +723,7 @@ export const hi: Dict = {
     readAloud: 'सुनें',
     callSupervisor: 'सुपरवाइज़र को कॉल करें',
     loading: 'कृपया प्रतीक्षा करें…',
+    decline: 'अस्वीकार करें',
   },
   lang: { title: 'अपनी भाषा चुनें', listen: 'सुनें' },
   login: {
@@ -798,6 +801,7 @@ export const hi: Dict = {
     briefing: 'साइट ब्रीफ़िंग',
     newRequest: 'नई ड्यूटी रिक्वेस्ट',
     accept: 'स्वीकार करें',
+    decline: 'अस्वीकार करें',
     arrivalOtp: 'क्लाइंट से आगमन कोड पूछें',
     checkoutOtp: 'क्लाइंट से चेक-आउट कोड पूछें',
     readyToCheckIn: 'चेक-इन के लिए तैयार',
