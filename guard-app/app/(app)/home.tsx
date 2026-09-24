@@ -74,6 +74,7 @@ export default function DutyHome() {
     deviceStanding,
     setOnline,
     accept,
+    reject,
     respondContract,
   } = useDuty();
   const [busy, setBusy] = useState(false);
@@ -350,6 +351,14 @@ export default function DutyHome() {
             setBusy(false);
           }
         }}
+        onReject={async (reason?: string) => {
+          setBusy(true);
+          try {
+            await reject(reason || 'Guard unavailable / declined');
+          } finally {
+            setBusy(false);
+          }
+        }}
         onGoOnline={goOnline}
       />
 
@@ -385,12 +394,14 @@ function PrimaryAction({
   busy,
   countdown,
   onAccept,
+  onReject,
   onGoOnline,
 }: {
   isOffer: boolean;
   busy: boolean;
   countdown: string;
   onAccept: () => void;
+  onReject: (reason?: string) => void;
   onGoOnline: () => void;
 }) {
   const t = useT();
@@ -399,16 +410,37 @@ function PrimaryAction({
 
   if (isOffer) {
     return (
-      <Card style={{ borderColor: colors.warning }}>
+      <Card style={{ borderColor: colors.warning, backgroundColor: '#1A1810' }}>
         <View style={styles.rowBetween}>
-          <H2>{t('duty.newRequest')}</H2>
+          <H2>{t('duty.newRequest') || 'New Duty Request'}</H2>
           <Ionicons name="notifications" size={22} color={colors.warning} />
         </View>
-        <Body>
+        <Body style={{ fontWeight: '700', fontSize: 16, marginTop: 4 }}>
           {booking?.customerName ?? 'Client'} · {booking?.serviceType ?? 'Guarding'}
         </Body>
-        <Muted>{booking?.location?.address ?? booking?.location?.city ?? ''}</Muted>
-        <Button label={t('duty.accept')} variant="success" onPress={onAccept} loading={busy} />
+        <Muted style={{ marginTop: 2, marginBottom: 12 }}>
+          {booking?.location?.address ?? booking?.location?.city ?? 'Location not specified'}
+        </Muted>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+          <View style={{ flex: 1 }}>
+            <Button
+              label={t('common.decline') || 'Decline'}
+              variant="ghost"
+              onPress={() => onReject('Guard unavailable / declined')}
+              loading={busy}
+              style={{ borderColor: colors.danger, borderWidth: 1 }}
+            />
+          </View>
+          <View style={{ flex: 1.5 }}>
+            <Button
+              label={t('duty.accept') || 'Accept'}
+              variant="success"
+              onPress={onAccept}
+              loading={busy}
+            />
+          </View>
+        </View>
       </Card>
     );
   }
