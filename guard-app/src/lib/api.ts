@@ -507,15 +507,6 @@ export type RosterShift = {
   checkedInAt: string | null;
   checkedOutAt: string | null;
   lateByMin: number;
-  payout?: number;
-  clientRating?: number;
-  clientReview?: string;
-  customerName?: string;
-  customerPhone?: string;
-  serviceRequirements?: Record<string, any>;
-  eventType?: string;
-  dressRequirement?: string;
-  specialInstructions?: string;
 };
 
 export const api = {
@@ -639,6 +630,9 @@ export const api = {
 
   acceptBooking: (bookingId: string, guardId: string) =>
     request('/api/guard/accept', { method: 'POST', body: { bookingId, guardId } }),
+
+  rejectBooking: (bookingId: string, guardId: string, reason?: string) =>
+    request('/api/guard/reject', { method: 'POST', body: { bookingId, guardId, reason } }),
 
   startDuty: (bookingId: string, guardId: string, otp: string) =>
     request('/api/guard/start-duty', { method: 'POST', body: { bookingId, guardId, otp } }),
