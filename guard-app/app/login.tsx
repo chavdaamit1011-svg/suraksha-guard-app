@@ -7,12 +7,16 @@ import { useT } from '@/i18n';
 import { api, e164 } from '@/lib/api';
 import { deviceMeta, getDeviceId } from '@/lib/device';
 import { appHash, listenForOtp } from '@/lib/native';
+import { KEYS, secure } from '@/lib/storage';
 import { useAuth } from '@/store/auth';
 import { colors, font, radius, space } from '@/theme';
 
 export default function Login() {
   const t = useT();
   const router = useRouter();
+  const guard = useAuth((s) => s.guard);
+  const hydrated = useAuth((s) => s.hydrated);
+  const needsPin = useAuth((s) => s.needsPin);
   const setGuard = useAuth((s) => s.setGuard);
   const hasPin = useAuth((s) => s.hasPin);
 
@@ -21,6 +25,27 @@ export default function Login() {
   const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [savedAccount, setSavedAccount] = useState<{ phone: string; name?: string; city?: string; empId?: string } | null>(null);
+
+  useEffect(() => {
+    if (hydrated && guard) {
+      router.replace(needsPin ? '/pin?mode=enter' : '/home');
+    }
+  }, [hydrated, guard, needsPin, router]);
+
+  useEffect(() => {
+    secure.get(KEYS.savedAccount).then((val) => {
+      if (val) {
+        try {
+          const parsed = JSON.parse(val);
+          if (parsed?.phone) {
+            setSavedAccount(parsed);
+            setPhone(parsed.phone);
+          }
+        } catch {}
+      }
+    }).catch(() => {});
+  }, []);
 
   const stopOtpListener = useRef<() => void>(() => {});
   useEffect(() => () => stopOtpListener.current(), []);
@@ -95,6 +120,41 @@ export default function Login() {
 
       {step === 'PHONE' ? (
         <View style={{ gap: space.lg }}>
+          {savedAccount ? (
+            <Card
+              style={{
+                backgroundColor: 'rgba(245,198,35,0.08)',
+                borderColor: 'rgba(245,198,35,0.3)',
+                padding: space.md,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ gap: 2, flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+                    <Ionicons name="person-circle-outline" size={16} color={colors.primary} />
+                    <Text style={{ color: colors.primary, fontSize: font.tiny, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      Saved Account
+                    </Text>
+                  </View>
+                  <Text style={{ color: colors.text, fontSize: font.body, fontWeight: '800' }}>
+                    {savedAccount.name || 'Guard'}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: font.label }}>
+                    +91 {savedAccount.phone} {savedAccount.city ? `• ${savedAccount.city}` : ''}
+                  </Text>
+                </View>
+                <Button
+                  label="Use This"
+                  size="small"
+                  variant="primary"
+                  onPress={() => {
+                    setPhone(savedAccount.phone);
+                  }}
+                />
+              </View>
+            </Card>
+          ) : null}
+
           <View style={{ gap: space.xs }}>
             <Text style={styles.label}>{t('login.mobile')}</Text>
             <View style={styles.phoneRow}>
@@ -106,7 +166,7 @@ export default function Login() {
                 placeholder={t('login.enterNumber')}
                 placeholderTextColor={colors.textFaint}
                 style={styles.phoneInput}
-                autoFocus
+                autoFocus={!savedAccount}
               />
             </View>
           </View>
