@@ -382,8 +382,8 @@ export default function DutyHome() {
         </View>
 
         <TodayDutyCard
-          current={current}
-          duty={duty}
+          current={effectiveContract ? current : (current && !current.contractCode ? current : null)}
+          duty={effectiveContract ? duty : (current && !current.contractCode ? duty : { ...duty, state: 'no_duty', canCheckIn: false, canCheckOut: false })}
           activeContract={effectiveContract}
           countdown={countdown}
           isOffer={isOffer}
@@ -1140,7 +1140,9 @@ function ContractOfferCard({
         </Text>
       </View>
 
-      <Body style={{ fontWeight: '800', marginTop: 4 }}>{offer.client} · {offer.site}</Body>
+      <Body style={{ fontWeight: '800', marginTop: 4 }}>
+        {(offer.client || offer.title || 'Security Contract')} {offer.site && offer.site !== 'All Sites' ? '· ' + offer.site : ''}
+      </Body>
 
       <View style={styles.metaRow}>
         <Meta icon="calendar" text={`${offer.startDate} to ${offer.endDate}`} />

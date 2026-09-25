@@ -178,6 +178,12 @@ export async function GET(req: Request) {
     const assignments: Assignment[] = [];
     for (const r of rosters) {
       const mine = (r.assignedGuards ?? []).find((g: any) => String(g.guardId) === guardId);
+      if (!mine || !['Accepted', 'Scheduled', 'Active'].includes(mine.status)) {
+        continue;
+      }
+      if (r.contractId && (!activeContractDocForGuard || String(activeContractDocForGuard._id) !== String(r.contractId))) {
+        continue;
+      }
       const resolved = await siteFor(r.agencyId ?? guard.agencyId ?? '', r.siteName);
       const w = shiftWindow(r.date, r.timing);
       const policy = dutyPolicy(resolved.config);
@@ -365,17 +371,22 @@ export async function GET(req: Request) {
       }).lean().catch(() => null),
     ]);
 
-    const contractOffers = (pendingContracts as any[]).map((c: any) => ({
-      contractId: String(c._id),
-      title: c.title,
-      client: c.client,
-      site: c.site || 'Main Site',
-      startDate: c.startDate,
-      endDate: c.endDate || 'Ongoing',
-      shiftTiming: c.shiftTiming || `${c.shiftHours || 12}h Shift`,
-      shiftHours: c.shiftHours || 8,
-      ratePerGuard: c.ratePerGuard,
-    }));
+    const contractOffers = (pendingContracts as any[]).map((c: any) => {
+      const clientName = c.client || c.clientName || 'Client';
+      const siteDisplay = (!c.site || c.site === 'All Sites') ? (c.title ? `${c.title} (${clientName})` : clientName) : c.site;
+      return {
+        contractId: String(c._id),
+        contractCode: `CNT-${String(c._id).slice(-4).toUpperCase()}`,
+        title: c.title || 'Security Contract',
+        client: clientName,
+        site: siteDisplay,
+        startDate: c.startDate,
+        endDate: c.endDate || 'Ongoing',
+        shiftTiming: c.shiftTiming || `${c.shiftHours || 12}h Shift`,
+        shiftHours: c.shiftHours || 8,
+        ratePerGuard: c.ratePerGuard,
+      };
+    });
 
     const activeContract = activeContractDoc ? {
       contractId: String((activeContractDoc as any)._id),

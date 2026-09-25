@@ -131,17 +131,21 @@ export const useDuty = create<DutyStore>((set, get) => ({
   hydrateBundle: async () => {
     const cached = await kv.getJSON<DutyBundle | null>(KEYS.todayBundle, null);
     if (cached) {
+      const activeContract = cached.activeContract ?? null;
+      const current = activeContract
+        ? cached.current
+        : (cached.current && !cached.current.contractCode ? cached.current : null);
       set({
         bundle: cached,
-        current: cached.current,
+        current,
         timeline: cached.timeline ?? [],
         alerts: cached.alerts ?? [],
         booking: (cached.booking as Booking) ?? null,
         contractOffers: cached.contractOffers ?? [],
-        activeContract: cached.activeContract ?? null,
+        activeContract,
         myContracts: cached.myContracts ?? [],
         online: !!cached.guard?.isOnline,
-        duty: computeDuty(cached.current, new Date(), cached.booking),
+        duty: computeDuty(current, new Date(), cached.booking),
         hydrated: true,
       });
     } else {

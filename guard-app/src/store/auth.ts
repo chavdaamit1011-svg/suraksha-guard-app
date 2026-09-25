@@ -8,7 +8,7 @@ import { destroyStoreKey } from '@/lib/secureStore';
 import { KEYS, secure, store } from '@/lib/storage';
 import { clearSession, loadSession, onSignedOut, revokeSession, saveSession } from '@/lib/session';
 
-const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
 export type Guard = {
   _id: string;
@@ -32,7 +32,7 @@ export type Guard = {
 type AuthState = {
   hydrated: boolean;
   guard: Guard | null;
-  needsPin: boolean; // true when a PIN unlock is required (fresh launch / 12h idle)
+  needsPin: boolean; // true when a PIN unlock is required (after 24h idle or fresh setup)
   hasPin: boolean;
 
   hydrate: () => Promise<void>;
@@ -72,15 +72,12 @@ export const useAuth = create<AuthState>((set, get) => ({
     const guard = raw ? (JSON.parse(raw) as Guard) : null;
     const pinHash = await secure.get(KEYS.pinHash);
     const lastLoginAt = await store.getJSON<number>(KEYS.lastLoginAt, 0);
-    const idleTooLong = Date.now() - lastLoginAt > TWELVE_HOURS_MS;
-    // A guard who is checked in (per the cached bundle) is never stopped by a PIN on launch.
-    const cached = await store.getJSON<any>(KEYS.todayBundle, null).catch(() => null);
-    const onShift = !!cached?.current?.checkedInAt && !cached?.current?.checkedOutAt;
+    const idleTooLong = !lastLoginAt || (Date.now() - lastLoginAt > TWENTY_FOUR_HOURS_MS);
     set({
       hydrated: true,
       guard,
       hasPin: !!pinHash,
-      needsPin: !!guard && !!pinHash,
+      needsPin: !!guard && !!pinHash && idleTooLong,
     });
   },
 
@@ -158,9 +155,11 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   /** On returning to the app: true (and PIN required) when it sat unused for 12 hours. */
-  lockApp: () => {
+  lockApp: async () => {
     const { guard, hasPin } = get();
-    if (guard && hasPin) {
+    if (!guard || !hasPin) return;
+    const last = await store.getJSON<number>(KEYS.lastLoginAt, 0);
+    if (!last || Date.now() - last > TWENTY_FOUR_HOURS_MS) {
       set({ needsPin: true });
     }
   },
@@ -169,7 +168,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     const { guard, hasPin } = get();
     if (!guard || !hasPin) return false;
     const last = await store.getJSON<number>(KEYS.lastLoginAt, 0);
-    if (Date.now() - last <= TWELVE_HOURS_MS) return false;
+    if (!last || Date.now() - last <= TWENTY_FOUR_HOURS_MS) return false;
     set({ needsPin: true });
     return true;
   },

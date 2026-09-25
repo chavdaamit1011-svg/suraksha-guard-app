@@ -177,6 +177,12 @@ export type CurrentAssignment = Assignment & {
   checkpoints: Checkpoint[];
   patrolRounds: PatrolRound[];
   wakeChecks: WakeCheck[];
+  contractCode?: string;
+  client?: string;
+  currentDayNumber?: number;
+  totalDays?: number;
+  todayShiftCompleted?: boolean;
+  nextShiftInfo?: any;
 };
 
 export type TimelineItem = { key: string; label: string; done: boolean; at: string | null; route: string };

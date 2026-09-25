@@ -71,15 +71,15 @@ export default function AppLayout() {
     useAuth.getState().touch();
     const sub = AppState.addEventListener('change', async (s) => {
       if (s === 'active') {
+        const locked = await useAuth.getState().lockIfIdle();
         const { hasPin, needsPin } = useAuth.getState();
-        if (hasPin && needsPin) {
+        if (hasPin && (needsPin || locked)) {
           router.replace('/pin?mode=enter');
           return;
         }
         useAuth.getState().touch();
         start();
       } else {
-        useAuth.getState().lockApp();
         stop();
       }
     });
