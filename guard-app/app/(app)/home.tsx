@@ -57,23 +57,178 @@ function bandFor(state: DutyStateName, countdown: string, t: (k: string) => stri
   }
 }
 
-function getTestDateOptions(): { label: string; date: string | null }[] {
-  const options: { label: string; date: string | null }[] = [{ label: 'Today (Live)', date: null }];
-  const base = new Date();
-  for (let i = 1; i <= 6; i++) {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const iso = `${yyyy}-${mm}-${dd}`;
-    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-    options.push({
-      label: `+${i}d (${dd} ${dayName})`,
-      date: iso,
-    });
+function getMonthDays(year: number, month: number) {
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevMonthDays = new Date(year, month, 0).getDate();
+  const days: { day: number; offset: number; ds: string }[] = [];
+
+  for (let i = firstDay - 1; i >= 0; i--) {
+    const d = prevMonthDays - i;
+    const prevM = month === 0 ? 11 : month - 1;
+    const prevY = month === 0 ? year - 1 : year;
+    days.push({ day: d, offset: -1, ds: `${prevY}-${String(prevM + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
   }
-  return options;
+  for (let d = 1; d <= daysInMonth; d++) {
+    days.push({ day: d, offset: 0, ds: `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
+  }
+  const rem = (7 - (days.length % 7)) % 7;
+  for (let d = 1; d <= rem; d++) {
+    const nextM = month === 11 ? 0 : month + 1;
+    const nextY = month === 11 ? year + 1 : year;
+    days.push({ day: d, offset: 1, ds: `${nextY}-${String(nextM + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
+  }
+  return days;
+}
+
+function TestDateCalendarModal({
+  selectedDate,
+  onSelectDate,
+  onClose,
+}: {
+  selectedDate: string | null;
+  onSelectDate: (date: string | null) => Promise<void>;
+  onClose: () => void;
+}) {
+  const initial = selectedDate ? new Date(`${selectedDate}T12:00:00`) : new Date();
+  const [viewYear, setViewYear] = useState(initial.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initial.getMonth());
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const days = getMonthDays(viewYear, viewMonth);
+  const realTodayIso = new Date().toISOString().slice(0, 10);
+
+  const prevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else {
+      setViewMonth((m) => m - 1);
+    }
+  };
+
+  const nextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  };
+
+  return (
+    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+          <View style={styles.modalHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="calendar" size={20} color={colors.primary} />
+              <Text style={styles.modalTitle}>Choose Test Date</Text>
+            </View>
+            <Pressable onPress={onClose} style={styles.modalCloseButton}>
+              <Ionicons name="close" size={22} color={colors.text} />
+            </Pressable>
+          </View>
+
+          <View style={styles.monthNavRow}>
+            <Pressable onPress={prevMonth} style={styles.navArrowBtn}>
+              <Ionicons name="chevron-back" size={20} color={colors.text} />
+            </Pressable>
+            <Text style={styles.monthNavTitle}>
+              {monthNames[viewMonth]} {viewYear}
+            </Text>
+            <Pressable onPress={nextMonth} style={styles.navArrowBtn}>
+              <Ionicons name="chevron-forward" size={20} color={colors.text} />
+            </Pressable>
+          </View>
+
+          <View style={styles.weekdayRow}>
+            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((w) => (
+              <Text key={w} style={styles.weekdayText}>{w}</Text>
+            ))}
+          </View>
+
+          <View style={styles.daysGrid}>
+            {days.map((item, index) => {
+              const isSelected = selectedDate === item.ds;
+              const isRealToday = realTodayIso === item.ds;
+              const isDimmed = item.offset !== 0;
+
+              return (
+                <Pressable
+                  key={item.ds + index}
+                  onPress={async () => {
+                    await onSelectDate(item.ds);
+                    onClose();
+                  }}
+                  style={[
+                    styles.dayCell,
+                    isSelected ? styles.dayCellSelected : null,
+                    isRealToday && !isSelected ? styles.dayCellToday : null,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.dayCellText,
+                      isDimmed ? styles.dayCellTextDimmed : null,
+                      isSelected ? styles.dayCellTextSelected : null,
+                      isRealToday && !isSelected ? styles.dayCellTextToday : null,
+                    ]}
+                  >
+                    {item.day}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={{ marginTop: space.md, gap: space.xs }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted }}>
+              Quick Presets:
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+              <Pressable
+                onPress={async () => {
+                  await onSelectDate(null);
+                  onClose();
+                }}
+                style={styles.quickPresetChip}
+              >
+                <Text style={styles.quickPresetText}>Reset to Live</Text>
+              </Pressable>
+
+              {[
+                { label: '+1 Day', days: 1 },
+                { label: '+7 Days', days: 7 },
+                { label: '+15 Days', days: 15 },
+                { label: '+30 Days', days: 30 },
+              ].map((p) => {
+                const target = new Date();
+                target.setDate(target.getDate() + p.days);
+                const iso = target.toISOString().slice(0, 10);
+                return (
+                  <Pressable
+                    key={p.label}
+                    onPress={async () => {
+                      await onSelectDate(iso);
+                      onClose();
+                    }}
+                    style={styles.quickPresetChip}
+                  >
+                    <Text style={styles.quickPresetText}>{p.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
 export default function DutyHome() {
@@ -115,7 +270,7 @@ export default function DutyHome() {
 
   const unreadNotices = alerts.find((a: DutyAlert) => a.key === 'notices')?.count ?? 0;
   const watch = useRef<Location.LocationSubscription | null>(null);
-  const testDateOptions = getTestDateOptions();
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   useEffect(() => {
     const onDuty = duty.state === 'on_duty' || duty.state === 'check_out';
@@ -256,37 +411,107 @@ export default function DutyHome() {
         </View>
 
         {/* ------------------------------------------------------------- */}
-        {/* 🧪 TESTING DATE SIMULATOR (Fast multi-day contract testing)    */}
+        {/* 🧪 TEST DATE SIMULATOR (Calendar Picker)                       */}
         {/* ------------------------------------------------------------- */}
         <View style={styles.testDateBar}>
           <View style={styles.testDateHeader}>
-            <Ionicons name="flask" size={13} color={colors.warning} />
-            <Text style={styles.testDateTitle}>🧪 TEST DATE SIMULATOR</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="flask" size={13} color={colors.warning} />
+              <Text style={styles.testDateTitle}>TEST DATE SIMULATOR</Text>
+            </View>
             {selectedTestDate ? (
               <Pressable onPress={() => setTestDate(null)} style={styles.resetDateChip}>
-                <Text style={styles.resetDateText}>Reset</Text>
+                <Ionicons name="refresh" size={10} color={colors.warning} />
+                <Text style={styles.resetDateText}>Reset to Live</Text>
               </Pressable>
-            ) : null}
+            ) : (
+              <View style={styles.liveBadge}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>Live Today</Text>
+              </View>
+            )}
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingTop: 4 }}>
-            {testDateOptions.map((opt) => {
-              const isSelected = selectedTestDate === opt.date || (!selectedTestDate && opt.date === null);
-              return (
-                <Pressable
-                  key={opt.label}
-                  onPress={() => setTestDate(opt.date)}
-                  style={[
-                    styles.testDateChip,
-                    isSelected ? styles.testDateChipActive : null,
-                  ]}
-                >
-                  <Text style={[styles.testDateChipText, isSelected ? styles.testDateChipTextActive : null]}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+
+          <View style={styles.calendarControlRow}>
+            {/* Live Today Chip */}
+            <Pressable
+              onPress={() => setTestDate(null)}
+              style={[
+                styles.calBtn,
+                !selectedTestDate ? styles.calBtnActive : styles.calBtnInactive,
+              ]}
+            >
+              <Ionicons
+                name="radio-button-on"
+                size={13}
+                color={!selectedTestDate ? '#0B0D0F' : colors.primary}
+              />
+              <Text
+                style={[
+                  styles.calBtnText,
+                  !selectedTestDate ? styles.calBtnTextActive : styles.calBtnTextInactive,
+                ]}
+              >
+                Today (Live)
+              </Text>
+            </Pressable>
+
+            {/* Stepper Left (<) */}
+            <Pressable
+              onPress={() => {
+                const base = selectedTestDate ? new Date(`${selectedTestDate}T12:00:00`) : new Date();
+                base.setDate(base.getDate() - 1);
+                const iso = base.toISOString().slice(0, 10);
+                setTestDate(iso);
+              }}
+              style={styles.stepBtn}
+              accessibilityLabel="Previous Day"
+            >
+              <Ionicons name="chevron-back" size={16} color={colors.text} />
+            </Pressable>
+
+            {/* Calendar Trigger */}
+            <Pressable
+              onPress={() => setCalendarOpen(true)}
+              style={[
+                styles.calPickerBtn,
+                selectedTestDate ? styles.calPickerBtnActive : null,
+              ]}
+            >
+              <Ionicons
+                name="calendar"
+                size={15}
+                color={selectedTestDate ? '#0B0D0F' : colors.primary}
+              />
+              <Text
+                style={[
+                  styles.calPickerBtnText,
+                  selectedTestDate ? styles.calPickerBtnTextActive : null,
+                ]}
+              >
+                {selectedTestDate ? selectedTestDate : 'Choose Date'}
+              </Text>
+              <Ionicons
+                name="chevron-down"
+                size={13}
+                color={selectedTestDate ? '#0B0D0F' : colors.textMuted}
+              />
+            </Pressable>
+
+            {/* Stepper Right (>) */}
+            <Pressable
+              onPress={() => {
+                const base = selectedTestDate ? new Date(`${selectedTestDate}T12:00:00`) : new Date();
+                base.setDate(base.getDate() + 1);
+                const iso = base.toISOString().slice(0, 10);
+                setTestDate(iso);
+              }}
+              style={styles.stepBtn}
+              accessibilityLabel="Next Day"
+            >
+              <Ionicons name="chevron-forward" size={16} color={colors.text} />
+            </Pressable>
+          </View>
         </View>
 
         {/* Status Band */}
@@ -491,6 +716,16 @@ export default function DutyHome() {
               setBusy(false);
             }
           }}
+        />
+      ) : null}
+
+      {calendarOpen ? (
+        <TestDateCalendarModal
+          selectedDate={selectedTestDate}
+          onSelectDate={async (d) => {
+            await setTestDate(d);
+          }}
+          onClose={() => setCalendarOpen(false)}
         />
       ) : null}
 
@@ -1293,20 +1528,159 @@ const styles = StyleSheet.create({
   testDateTitle: { fontSize: 10, fontWeight: '900', color: colors.warning, letterSpacing: 0.5 },
   resetDateChip: { backgroundColor: colors.warningDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill },
   resetDateText: { fontSize: 10, fontWeight: '800', color: colors.warning },
-  testDateChip: {
+  calendarControlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  calBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
+    paddingVertical: 7,
+    borderRadius: radius.sm,
+  },
+  calBtnActive: {
+    backgroundColor: colors.primary,
+  },
+  calBtnInactive: {
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
-  testDateChipActive: {
+  calBtnText: { fontSize: 11, fontWeight: '800' },
+  calBtnTextActive: { color: '#0B0D0F' },
+  calBtnTextInactive: { color: colors.textMuted },
+  calPickerBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  calPickerBtnActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  testDateChipText: { fontSize: 11, fontWeight: '700', color: colors.textMuted },
-  testDateChipTextActive: { color: '#0B0D0F', fontWeight: '900' },
+  calPickerBtnText: { fontSize: 12, fontWeight: '800', color: colors.text },
+  calPickerBtnTextActive: { color: '#0B0D0F' },
+  stepBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(34,197,94,0.1)',
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.onDuty,
+  },
+  liveText: { fontSize: 10, fontWeight: '800', color: colors.onDuty },
+  monthNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: space.sm,
+  },
+  navArrowBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthNavTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  weekdayRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  weekdayText: {
+    width: '14%',
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textFaint,
+  },
+  daysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 6,
+  },
+  dayCell: {
+    width: '14.28%',
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 2,
+    borderRadius: 8,
+  },
+  dayCellSelected: {
+    backgroundColor: colors.primary,
+    borderRadius: 19,
+  },
+  dayCellToday: {
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: 19,
+  },
+  dayCellText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  dayCellTextSelected: {
+    color: '#0B0D0F',
+    fontWeight: '900',
+  },
+  dayCellTextToday: {
+    color: colors.primary,
+    fontWeight: '800',
+  },
+  dayCellTextDimmed: {
+    color: 'rgba(255,255,255,0.2)',
+  },
+  quickPresetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  quickPresetText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowGap: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   link: { color: colors.primary, fontSize: font.tiny, fontWeight: '700' },
