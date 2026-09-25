@@ -206,12 +206,14 @@ export type DutyBundle = {
   contractOffers?: ContractOffer[];
   /** Active accepted contract for this guard */
   activeContract?: ContractOffer | null;
+  myContracts?: ContractOffer[];
   recentAttendance: any[];
   notifications: any[];
 };
 
 export type ContractOffer = {
   contractId: string;
+  contractCode?: string;
   title: string;
   client: string;
   site: string;
@@ -220,6 +222,15 @@ export type ContractOffer = {
   shiftTiming: string;
   shiftHours: number;
   ratePerGuard?: number;
+  totalDays?: number;
+  currentDayNumber?: number;
+  completedDaysCount?: number;
+  dailyBreakdown?: {
+    date: string;
+    status: 'Completed' | 'On Duty' | 'Scheduled' | 'Upcoming' | 'Missed' | string;
+    checkInTime?: string | null;
+    checkOutTime?: string | null;
+  }[];
 };
 
 /** A replacement offer as the card renders it (PRD 18.12 GAP-S-055). */
@@ -649,7 +660,18 @@ export const api = {
   notifications: (guardId: string) =>
     request<{ success: boolean; notifications: any[] }>('/api/guard/notifications', { query: { guardId } }),
 
-  respondContract: (contractId: string, guardId: string, action: 'accept' | 'reject', reason?: string) =>
+    leaveContract: (contractId: string, guardId: string, reason: string) =>
+    request<{ success: boolean; message: string }>('/api/guard/contract/respond', {
+      method: 'POST',
+      body: { contractId, guardId, action: 'leave', reason },
+    }),
+
+  requestDayLeave: (payload: { guardId: string; type: string; fromDate: string; toDate: string; reason: string }) =>
+    request<{ success: boolean; message: string }>('/api/guard/leave', {
+      method: 'POST',
+      body: payload,
+    }),
+  respondContract: (contractId: string, guardId: string, action: 'accept' | 'reject' | 'leave', reason?: string) =>
     request<{ success: boolean; message: string; status: string }>('/api/guard/contract/respond', {
       method: 'POST',
       body: { contractId, guardId, action, reason },
@@ -662,10 +684,10 @@ export const api = {
    * `deviceId` lets the server enforce one-device-per-guard — an unapproved second phone gets a
    * bundle with no duty data and a "waiting for approval" alert (SUR-GAP-006).
    */
-  today: (guardId: string, deviceId?: string) =>
+  today: (guardId: string, deviceId?: string, testDate?: string) =>
     request<{ success: boolean; bundle: DutyBundle; deviceBlocked?: boolean; deviceStanding?: string }>(
       '/api/guard/today',
-      { query: { guardId, deviceId } }
+      { query: { guardId, deviceId, testDate } }
     ),
 
   /** This phone's standing against the guard's device binding. */

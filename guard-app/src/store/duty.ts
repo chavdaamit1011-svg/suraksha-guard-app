@@ -45,7 +45,12 @@ type DutyStore = {
   booking: Booking | null;
   contractOffers: ContractOffer[];
   activeContract: ContractOffer | null;
+  myContracts: ContractOffer[];
   online: boolean;
+  selectedTestDate: string | null;
+  setTestDate: (date: string | null) => Promise<void>;
+  leaveContract: (contractId: string, reason: string) => Promise<void>;
+  applyDayLeave: (date: string, reason: string) => Promise<void>;
 
   offline: boolean;
   queued: number;
@@ -111,7 +116,9 @@ export const useDuty = create<DutyStore>((set, get) => ({
   booking: null,
   contractOffers: [],
   activeContract: null,
+  myContracts: [],
   online: false,
+  selectedTestDate: null,
   offline: false,
   queued: 0,
   mediaQueued: 0,
@@ -132,6 +139,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
         booking: (cached.booking as Booking) ?? null,
         contractOffers: cached.contractOffers ?? [],
         activeContract: cached.activeContract ?? null,
+        myContracts: cached.myContracts ?? [],
         online: !!cached.guard?.isOnline,
         duty: computeDuty(cached.current, new Date(), cached.booking),
         hydrated: true,
@@ -153,7 +161,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
       const flushedFirst = await flush(id).catch(() => null);
       if (flushedFirst && (flushedFirst.sent > 0 || flushedFirst.failed > 0)) await get().refreshQueued();
 
-      const res = await api.today(id, await getDeviceId());
+      const res = await api.today(id, await getDeviceId(), get().selectedTestDate || undefined);
       const bundle = res.bundle;
       // Anything still waiting in the outbox (no network) is laid over the server's view.
       if (bundle.current) bundle.current = await withPendingAttendance(bundle.current);
@@ -182,6 +190,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
         booking: (bundle.booking as Booking) ?? null,
         contractOffers: bundle.contractOffers ?? [],
         activeContract: bundle.activeContract ?? null,
+        myContracts: bundle.myContracts ?? (bundle.activeContract ? [bundle.activeContract] : []),
         online: !!bundle.guard?.isOnline,
         // The server's verdict wins the moment it arrives.
         duty: bundle.current?.duty ?? computeDuty(bundle.current, new Date(), bundle.booking),
@@ -260,7 +269,31 @@ export const useDuty = create<DutyStore>((set, get) => ({
     await get().refresh();
   },
 
-  respondContract: async (contractId: string, action: 'accept' | 'reject', reason?: string) => {
+  setTestDate: async (date: string | null) => {
+    set({ selectedTestDate: date });
+    await get().refresh();
+  },
+
+  leaveContract: async (contractId: string, reason: string) => {
+    const id = gid(useAuth.getState().guard);
+    if (!id) return;
+    await api.leaveContract(contractId, id, reason);
+    await get().refresh();
+  },
+
+  applyDayLeave: async (date: string, reason: string) => {
+    const id = gid(useAuth.getState().guard);
+    if (!id) return;
+    await api.requestDayLeave({
+      guardId: id,
+      type: 'casual',
+      fromDate: date,
+      toDate: date,
+      reason,
+    });
+    await get().refresh();
+  },
+  respondContract: async (contractId: string, action: 'accept' | 'reject' | 'leave', reason?: string) => {
     const id = gid(useAuth.getState().guard);
     if (!id) return;
     await api.respondContract(contractId, id, action, reason);

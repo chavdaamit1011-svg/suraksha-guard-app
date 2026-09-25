@@ -1,8 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { Body, Button, Card, H2, Muted, Screen, StatusBand } from '@/components/ui';
 import { SideMenu } from '@/components/SideMenu';
 import { UpdateNotice } from '@/components/UpdateNotice';
@@ -28,28 +37,43 @@ const TILES: Tile[] = [
 
 type Band = { tone: 'off' | 'on' | 'warn' | 'danger'; icon: keyof typeof Ionicons.glyphMap; text: string };
 
-/**
- * The status band answers "am I on duty?" without reading (PRD 18.3 §5): colour *and* icon *and*
- * text, never colour alone.
- */
 function bandFor(state: DutyStateName, countdown: string, t: (k: string) => string): Band {
   switch (state) {
     case 'on_duty':
     case 'check_out':
-      return { tone: 'on', icon: 'shield-checkmark', text: t('duty.onDuty') };
+      return { tone: 'on', icon: 'shield-checkmark', text: t('duty.onDuty') || 'On Duty' };
     case 'check_in':
-      return { tone: 'warn', icon: 'log-in', text: t('duty.readyToCheckIn') };
+      return { tone: 'warn', icon: 'log-in', text: t('duty.readyToCheckIn') || 'Ready to Check In' };
     case 'upcoming':
-      return { tone: 'warn', icon: 'time', text: `${t('duty.startsIn')} ${countdown}` };
+      return { tone: 'warn', icon: 'time', text: `${t('duty.startsIn') || 'Starts in'} ${countdown}` };
     case 'late':
-      return { tone: 'danger', icon: 'alert-circle', text: t('duty.late') };
+      return { tone: 'danger', icon: 'alert-circle', text: t('duty.late') || 'Late for Duty' };
     case 'absent':
-      return { tone: 'danger', icon: 'close-circle', text: t('duty.notCheckedIn') };
+      return { tone: 'danger', icon: 'close-circle', text: t('duty.notCheckedIn') || 'Check-in Window Closed' };
     case 'complete':
-      return { tone: 'off', icon: 'checkmark-done', text: t('duty.complete') };
+      return { tone: 'off', icon: 'checkmark-done', text: t('duty.complete') || 'Shift Completed' };
     default:
-      return { tone: 'off', icon: 'moon', text: t('duty.noDutyToday') };
+      return { tone: 'off', icon: 'moon', text: t('duty.noDutyToday') || 'No Scheduled Duty Today' };
   }
+}
+
+function getTestDateOptions(): { label: string; date: string | null }[] {
+  const options: { label: string; date: string | null }[] = [{ label: 'Today (Live)', date: null }];
+  const base = new Date();
+  for (let i = 1; i <= 6; i++) {
+    const d = new Date(base);
+    d.setDate(base.getDate() + i);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const iso = `${yyyy}-${mm}-${dd}`;
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+    options.push({
+      label: `+${i}d (${dd} ${dayName})`,
+      date: iso,
+    });
+  }
+  return options;
 }
 
 export default function DutyHome() {
@@ -64,6 +88,7 @@ export default function DutyHome() {
     booking,
     contractOffers,
     activeContract,
+    myContracts,
     online,
     offline,
     queued,
@@ -72,21 +97,26 @@ export default function DutyHome() {
     hydrated,
     deviceBlocked,
     deviceStanding,
+    selectedTestDate,
+    setTestDate,
+    leaveContract,
+    applyDayLeave,
     setOnline,
     accept,
     reject,
     respondContract,
   } = useDuty();
+
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedContractForModal, setSelectedContractForModal] = useState<ContractOffer | null>(null);
+  const [leaveContractModalOpen, setLeaveContractModalOpen] = useState<ContractOffer | null>(null);
+  const [dayLeaveModalOpen, setDayLeaveModalOpen] = useState<ContractOffer | null>(null);
+
   const unreadNotices = alerts.find((a: DutyAlert) => a.key === 'notices')?.count ?? 0;
   const watch = useRef<Location.LocationSubscription | null>(null);
+  const testDateOptions = getTestDateOptions();
 
-  /**
-   * Location streams only while a duty is actually running — PRD 18.15.7 and §39 make this a
-   * privacy requirement, not an optimisation: "the app must never track a guard outside their
-   * shift window". The interval widens when stationary to hold the 6%-per-shift battery budget.
-   */
   useEffect(() => {
     const onDuty = duty.state === 'on_duty' || duty.state === 'check_out';
     const activeBooking = booking?.bookingStatus === 'ACTIVE';
@@ -94,19 +124,16 @@ export default function DutyHome() {
 
     (async () => {
       if (!shouldTrack) {
-        // Before the cached bundle loads the state is a placeholder, not "off duty".
         if (hydrated) await stopDutyTracking();
       } else if (!watch.current) {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') return;
-        // Preferred: the foreground service, which keeps reporting with the screen off.
         const started = await startDutyTracking(
           current?.endAt,
           current?.policy?.autoCloseAfterMin ?? 60,
           { title: t('duty.trackingTitle'), body: t('duty.trackingBody', { site: current?.siteName ?? '' }) }
         );
         if (started) return;
-        // Fallback: updates only while the app is open.
         watch.current = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Balanced,
@@ -135,7 +162,6 @@ export default function DutyHome() {
   const band = bandFor(duty.state, countdown, t);
   const isOffer = booking?.bookingStatus === 'PENDING_ACCEPTANCE';
 
-  /** Server alerts arrive in English; show them in the guard's language when we know the key. */
   const alertText = (a: DutyAlert) => {
     const k = `alerts.${a.key}`;
     const s = t(k, { count: a.count ?? '', site: a.site ?? '' });
@@ -157,11 +183,6 @@ export default function DutyHome() {
     }
   };
 
-  /**
-   * An unapproved phone gets no duty data (SUR-GAP-006). The SOS button stays — it lives in the
-   * layout above every screen — because withholding a life-safety control to enforce a fraud
-   * check would be the wrong trade.
-   */
   if (deviceBlocked) {
     return (
       <Screen>
@@ -192,221 +213,322 @@ export default function DutyHome() {
     );
   }
 
+  const effectiveContract = activeContract || (myContracts && myContracts.length > 0 ? myContracts[0] : null);
+
   return (
     <>
-    <Screen>
-      <View style={styles.header}>
-        {/* The avatar is the menu button (no separate ☰), top left like WhatsApp. */}
-        <Pressable onPress={() => setMenuOpen(true)} style={styles.avatar} accessibilityLabel={t('menu.open')}>
-          <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Muted>{guard?.city ?? ''}</Muted>
-          <Text style={styles.headerName} numberOfLines={1}>
-            {guard?.name ?? 'Guard'}
-          </Text>
-        </View>
-        <Pressable onPress={() => router.push('/apphealth')} hitSlop={8} style={styles.syncChip}>
-          <Ionicons
-            name={offline ? 'cloud-offline' : queued + mediaQueued > 0 ? 'cloud-upload' : 'cloud-done'}
-            size={18}
-            color={offline ? colors.warning : queued + mediaQueued > 0 ? colors.warning : colors.onDuty}
-          />
-          {/* All sent: just the green cloud. Words only when something needs the guard's eye. */}
-          {offline || queued + mediaQueued > 0 ? (
-            <Text style={styles.syncCount}>
-              {offline ? t('duty.syncOffline') : `${t('duty.syncSending')} ${queued + mediaQueued}`}
-            </Text>
-          ) : null}
-        </Pressable>
-        {/* Notices live here only: the bell, with the unread count from the duty bundle. */}
-        <Pressable
-          onPress={() => router.push('/notices')}
-          style={styles.bell}
-          accessibilityLabel={t('notices.title')}
-        >
-          <Ionicons name={unreadNotices > 0 ? 'notifications' : 'notifications-outline'} size={26} color={colors.text} />
-          {unreadNotices > 0 ? (
-            <View style={styles.bellBadge}>
-              <Text style={styles.bellBadgeText}>{unreadNotices > 9 ? '9+' : unreadNotices}</Text>
-            </View>
-          ) : null}
-        </Pressable>
-      </View>
-
-      <StatusBand tone={band.tone} icon={<Ionicons name={band.icon} size={20} color="#fff" />} text={band.text} />
-
-      <UpdateNotice />
-
-      {/* Offline is a normal state: calm amber, never red (PRD 18.17.1 rule 15) */}
-      {offline ? (
-        <View style={[styles.notice, { backgroundColor: colors.warningDim }]}>
-          <Ionicons name="cloud-offline" size={14} color={colors.warning} />
-          <Text style={[styles.noticeText, { color: colors.warning }]}>{t('offlineBanner')}</Text>
-        </View>
-      ) : null}
-
-      {failed > 0 ? (
-        <Pressable onPress={() => router.push('/apphealth')}>
-          <View style={[styles.notice, { backgroundColor: colors.dangerDim }]}>
-            <Ionicons name="warning" size={14} color={colors.danger} />
-            <Text style={[styles.noticeText, { color: colors.danger }]}>
-              {failed} {t('duty.recordsNotSaved')}
+      <Screen>
+        {/* Header with Avatar Drawer trigger */}
+        <View style={styles.header}>
+          <Pressable onPress={() => setMenuOpen(true)} style={styles.avatar} accessibilityLabel={t('menu.open')}>
+            <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+          </Pressable>
+          <View style={{ flex: 1 }}>
+            <Muted>{guard?.city ?? ''}</Muted>
+            <Text style={styles.headerName} numberOfLines={1}>
+              {guard?.name ?? 'Guard'}
             </Text>
           </View>
-        </Pressable>
-      ) : null}
-
-      {/* Alert strip — zero to three one-tap resolutions (PRD 18.3 §5) */}
-      {alerts
-        // The status band and the CHECK IN button already say this; a third copy is noise.
-        // Unread notices are the bell's badge in the header, not a strip of their own.
-        .filter((a: DutyAlert) => a.key !== 'not_checked_in' && a.key !== 'notices')
-        .map((a: DutyAlert) => (
-        <Pressable key={a.key} onPress={() => router.push(a.route as any)}>
-          <View
-            style={[
-              styles.notice,
-              { backgroundColor: a.severity === 'danger' ? colors.dangerDim : a.severity === 'warn' ? colors.warningDim : 'rgba(59,130,246,0.12)' },
-            ]}
-          >
+          <Pressable onPress={() => router.push('/apphealth')} hitSlop={8} style={styles.syncChip}>
             <Ionicons
-              name={a.severity === 'danger' ? 'alert-circle' : a.severity === 'warn' ? 'warning' : 'information-circle'}
-              size={14}
-              color={a.severity === 'danger' ? colors.danger : a.severity === 'warn' ? colors.warning : colors.info}
+              name={offline ? 'cloud-offline' : queued + mediaQueued > 0 ? 'cloud-upload' : 'cloud-done'}
+              size={18}
+              color={offline ? colors.warning : queued + mediaQueued > 0 ? colors.warning : colors.onDuty}
             />
-            <Text
-              style={[
-                styles.noticeText,
-                { color: a.severity === 'danger' ? colors.danger : a.severity === 'warn' ? colors.warning : colors.info },
-              ]}
-            >
-              {alertText(a)}
-            </Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.textFaint} />
+            {offline || queued + mediaQueued > 0 ? (
+              <Text style={styles.syncCount}>
+                {offline ? t('duty.syncOffline') : `${t('duty.syncSending')} ${queued + mediaQueued}`}
+              </Text>
+            ) : null}
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/notices')}
+            style={styles.bell}
+            accessibilityLabel={t('notices.title')}
+          >
+            <Ionicons name={unreadNotices > 0 ? 'notifications' : 'notifications-outline'} size={26} color={colors.text} />
+            {unreadNotices > 0 ? (
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>{unreadNotices > 9 ? '9+' : unreadNotices}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        </View>
+
+        {/* ------------------------------------------------------------- */}
+        {/* 🧪 TESTING DATE SIMULATOR (Fast multi-day contract testing)    */}
+        {/* ------------------------------------------------------------- */}
+        <View style={styles.testDateBar}>
+          <View style={styles.testDateHeader}>
+            <Ionicons name="flask" size={13} color={colors.warning} />
+            <Text style={styles.testDateTitle}>🧪 TEST DATE SIMULATOR</Text>
+            {selectedTestDate ? (
+              <Pressable onPress={() => setTestDate(null)} style={styles.resetDateChip}>
+                <Text style={styles.resetDateText}>Reset</Text>
+              </Pressable>
+            ) : null}
           </View>
-        </Pressable>
-      ))}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingTop: 4 }}>
+            {testDateOptions.map((opt) => {
+              const isSelected = selectedTestDate === opt.date || (!selectedTestDate && opt.date === null);
+              return (
+                <Pressable
+                  key={opt.label}
+                  onPress={() => setTestDate(opt.date)}
+                  style={[
+                    styles.testDateChip,
+                    isSelected ? styles.testDateChipActive : null,
+                  ]}
+                >
+                  <Text style={[styles.testDateChipText, isSelected ? styles.testDateChipTextActive : null]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
 
-      {/* Contract Assignment Offers from Agency Portal */}
-      {contractOffers && contractOffers.length > 0
-        ? contractOffers.map((offer) => (
-            <ContractOfferCard
-              key={offer.contractId}
-              offer={offer}
-              busy={busy}
-              onAccept={async () => {
-                setBusy(true);
-                try {
-                  await respondContract(offer.contractId, 'accept');
-                } finally {
-                  setBusy(false);
-                }
-              }}
-              onReject={async () => {
-                setBusy(true);
-                try {
-                  await respondContract(offer.contractId, 'reject');
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            />
-          ))
-        : null}
+        {/* Status Band */}
+        <StatusBand tone={band.tone} icon={<Ionicons name={band.icon} size={20} color="#fff" />} text={band.text} />
 
-      {/* Active Contract Deployment Badge */}
-      {activeContract ? (
-        <Card style={{ backgroundColor: 'rgba(59,130,246,0.06)', borderColor: 'rgba(59,130,246,0.2)' }}>
-          <View style={styles.rowBetween}>
-            <View style={styles.rowGap}>
-              <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
-              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary }}>
-                Active Contract Deployment
+        <UpdateNotice />
+
+        {/* Offline Banner */}
+        {offline ? (
+          <View style={[styles.notice, { backgroundColor: colors.warningDim }]}>
+            <Ionicons name="cloud-offline" size={14} color={colors.warning} />
+            <Text style={[styles.noticeText, { color: colors.warning }]}>{t('offlineBanner')}</Text>
+          </View>
+        ) : null}
+
+        {failed > 0 ? (
+          <Pressable onPress={() => router.push('/apphealth')}>
+            <View style={[styles.notice, { backgroundColor: colors.dangerDim }]}>
+              <Ionicons name="warning" size={14} color={colors.danger} />
+              <Text style={[styles.noticeText, { color: colors.danger }]}>
+                {failed} {t('duty.recordsNotSaved')}
               </Text>
             </View>
-            <Text style={{ fontSize: 10, color: colors.textMuted }}>
-              {activeContract.startDate} → {activeContract.endDate}
+          </Pressable>
+        ) : null}
+
+        {/* Alert strip */}
+        {alerts
+          .filter((a: DutyAlert) => a.key !== 'not_checked_in' && a.key !== 'notices')
+          .map((a: DutyAlert) => (
+            <Pressable key={a.key} onPress={() => router.push(a.route as any)}>
+              <View
+                style={[
+                  styles.notice,
+                  { backgroundColor: a.severity === 'danger' ? colors.dangerDim : a.severity === 'warn' ? colors.warningDim : 'rgba(59,130,246,0.12)' },
+                ]}
+              >
+                <Ionicons
+                  name={a.severity === 'danger' ? 'alert-circle' : a.severity === 'warn' ? 'warning' : 'information-circle'}
+                  size={14}
+                  color={a.severity === 'danger' ? colors.danger : a.severity === 'warn' ? colors.warning : colors.info}
+                />
+                <Text
+                  style={[
+                    styles.noticeText,
+                    { color: a.severity === 'danger' ? colors.danger : a.severity === 'warn' ? colors.warning : colors.info },
+                  ]}
+                >
+                  {alertText(a)}
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.textFaint} />
+              </View>
+            </Pressable>
+          ))}
+
+        {/* Contract Assignment Offers (New requests to Accept/Reject) */}
+        {contractOffers && contractOffers.length > 0
+          ? contractOffers.map((offer) => (
+              <ContractOfferCard
+                key={offer.contractId}
+                offer={offer}
+                busy={busy}
+                onAccept={async () => {
+                  setBusy(true);
+                  try {
+                    await respondContract(offer.contractId, 'accept');
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                onReject={async () => {
+                  setBusy(true);
+                  try {
+                    await respondContract(offer.contractId, 'reject');
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              />
+            ))
+          : null}
+
+        {/* ------------------------------------------------------------- */}
+        {/* SECTION 1: TODAY'S DUTY (Unified, Clean Lifecycle Card)        */}
+        {/* ------------------------------------------------------------- */}
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionBadge}>
+            <Ionicons name="calendar" size={16} color={colors.primary} />
+            <Text style={styles.sectionTitle}>
+              {selectedTestDate ? `DUTY FOR ${selectedTestDate}` : "TODAY'S DUTY"}
             </Text>
           </View>
-          <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text, marginTop: 4 }}>
-            {activeContract.client} · {activeContract.site}
-          </Text>
-          <Text style={{ fontSize: 11, color: colors.textMuted }}>
-            Shift: {activeContract.shiftTiming}
-          </Text>
-        </Card>
+        </View>
+
+        <TodayDutyCard
+          current={current}
+          duty={duty}
+          activeContract={effectiveContract}
+          countdown={countdown}
+          isOffer={isOffer}
+          booking={booking}
+          online={online}
+          busy={busy}
+          onAccept={async () => {
+            setBusy(true);
+            try {
+              await accept();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          onReject={async (reason?: string) => {
+            setBusy(true);
+            try {
+              await reject(reason || 'Guard unavailable / declined');
+            } finally {
+              setBusy(false);
+            }
+          }}
+          onGoOnline={goOnline}
+        />
+
+        {/* ------------------------------------------------------------- */}
+        {/* SECTION 2: MY CONTRACTS (Ongoing Contracts, Leave & Progress) */}
+        {/* ------------------------------------------------------------- */}
+        {effectiveContract ? (
+          <>
+            <View style={[styles.sectionHeader, { marginTop: space.md }]}>
+              <View style={styles.sectionBadge}>
+                <Ionicons name="briefcase" size={16} color={colors.primary} />
+                <Text style={styles.sectionTitle}>MY CONTRACTS</Text>
+              </View>
+            </View>
+
+            <MyContractsCard
+              contract={effectiveContract}
+              onViewDetails={() => setSelectedContractForModal(effectiveContract)}
+              onLeaveContract={() => setLeaveContractModalOpen(effectiveContract)}
+              onRequestDayLeave={() => setDayLeaveModalOpen(effectiveContract)}
+            />
+          </>
+        ) : null}
+
+        {/* Timeline strip for active duty */}
+        {timeline.length > 0 ? <Timeline items={timeline} /> : null}
+
+        {/* Quick grid */}
+        <View style={styles.grid}>
+          {TILES.map((tile) => (
+            <Pressable key={tile.key} onPress={() => router.push(tile.route as any)} style={styles.tile}>
+              <Ionicons name={tile.icon} size={28} color={colors.primary} />
+              <Text style={styles.tileLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                {t(`grid.${tile.key}`)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </Screen>
+
+      {/* Contract Details & Attendance History Modal */}
+      {selectedContractForModal ? (
+        <ContractHistoryModal
+          contract={selectedContractForModal}
+          onClose={() => setSelectedContractForModal(null)}
+          onRequestDayLeave={() => {
+            const c = selectedContractForModal;
+            setSelectedContractForModal(null);
+            setDayLeaveModalOpen(c);
+          }}
+        />
       ) : null}
 
-      {/* Primary action — one 96dp button, ~25% of the viewport (PRD 18.3 §5) */}
-      <PrimaryAction
-        isOffer={isOffer}
-        busy={busy}
-        countdown={countdown}
-        onAccept={async () => {
-          setBusy(true);
-          try {
-            await accept();
-          } finally {
-            setBusy(false);
-          }
-        }}
-        onReject={async (reason?: string) => {
-          setBusy(true);
-          try {
-            await reject(reason || 'Guard unavailable / declined');
-          } finally {
-            setBusy(false);
-          }
-        }}
-        onGoOnline={goOnline}
-      />
-
-      {/* Shift card or on-demand booking card */}
-      {current ? (
-        <ShiftCard assignment={current} />
-      ) : booking && booking.bookingStatus !== 'PENDING_ACCEPTANCE' && booking.bookingStatus !== 'COMPLETED' ? (
-        <BookingCard booking={booking} />
+      {/* Leave Contract Modal (Guard relinquishes contract permanently) */}
+      {leaveContractModalOpen ? (
+        <LeaveContractModal
+          contract={leaveContractModalOpen}
+          onClose={() => setLeaveContractModalOpen(null)}
+          onConfirm={async (reason) => {
+            const cid = leaveContractModalOpen.contractId;
+            setLeaveContractModalOpen(null);
+            setBusy(true);
+            try {
+              await leaveContract(cid, reason);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
       ) : null}
 
-      {/* Timeline strip */}
-      {timeline.length > 0 ? <Timeline items={timeline} /> : null}
+      {/* Request Day Leave Modal (Guard asks 1-day leave during contract) */}
+      {dayLeaveModalOpen ? (
+        <RequestDayLeaveModal
+          contract={dayLeaveModalOpen}
+          onClose={() => setDayLeaveModalOpen(null)}
+          onConfirm={async (date, reason) => {
+            setDayLeaveModalOpen(null);
+            setBusy(true);
+            try {
+              await applyDayLeave(date, reason);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      ) : null}
 
-      {/* Quick grid */}
-      <View style={styles.grid}>
-        {TILES.map((tile) => (
-          <Pressable key={tile.key} onPress={() => router.push(tile.route as any)} style={styles.tile}>
-            <Ionicons name={tile.icon} size={28} color={colors.primary} />
-            <Text style={styles.tileLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-              {t(`grid.${tile.key}`)}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-    </Screen>
-    <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
     </>
   );
 }
 
-function PrimaryAction({
-  isOffer,
-  busy,
+/**
+ * Today's Duty Card (Unified state machine)
+ */
+function TodayDutyCard({
+  current,
+  duty,
+  activeContract,
   countdown,
+  isOffer,
+  booking,
+  online,
+  busy,
   onAccept,
   onReject,
   onGoOnline,
 }: {
-  isOffer: boolean;
-  busy: boolean;
+  current: CurrentAssignment | null;
+  duty: any;
+  activeContract: ContractOffer | null;
   countdown: string;
-  onAccept: () => void;
-  onReject: (reason?: string) => void;
-  onGoOnline: () => void;
+  isOffer: boolean;
+  booking: any;
+  online: boolean;
+  busy: boolean;
+  onAccept: () => Promise<void>;
+  onReject: (reason?: string) => Promise<void>;
+  onGoOnline: () => Promise<void>;
 }) {
   const t = useT();
   const router = useRouter();
-  const { duty, current, booking, online } = useDuty();
 
   if (isOffer) {
     return (
@@ -421,15 +543,13 @@ function PrimaryAction({
         <Muted style={{ marginTop: 2, marginBottom: 12 }}>
           {booking?.location?.address ?? booking?.location?.city ?? 'Location not specified'}
         </Muted>
-
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
           <View style={{ flex: 1 }}>
             <Button
               label={t('common.decline') || 'Decline'}
-              variant="ghost"
+              variant="danger"
               onPress={() => onReject('Guard unavailable / declined')}
               loading={busy}
-              style={{ borderColor: colors.danger, borderWidth: 1 }}
             />
           </View>
           <View style={{ flex: 1.5 }}>
@@ -445,133 +565,524 @@ function PrimaryAction({
     );
   }
 
-  if (duty.canCheckIn) {
+  // Active roster / contract shift today
+  if (current) {
+    const clientName = (current as any).client || activeContract?.client || current.siteName || 'Client Company';
+    const siteName = current.siteName || activeContract?.site || 'Main Site';
+    const contractCode = (current as any).contractCode || activeContract?.contractCode || `CNT-${current.rosterId.slice(-4).toUpperCase()}`;
+    const dayNum = (current as any).currentDayNumber || activeContract?.currentDayNumber || 1;
+    const totalDays = (current as any).totalDays || activeContract?.totalDays || 30;
+    const shiftTiming = current.timing || `${current.start} – ${current.end}`;
+    const isCompleted = duty.state === 'complete' || !!current.checkedOutAt;
+    const isOnDuty = duty.state === 'on_duty' || duty.state === 'check_out' || (!!current.checkedInAt && !current.checkedOutAt);
+
     return (
-      <Button
-        label={t('duty.checkIn')}
-        size="huge"
-        variant="success"
-        icon={<Ionicons name="log-in" size={26} color="#fff" />}
-        onPress={() => router.push('/checkin?mode=in')}
-      />
-    );
-  }
-
-  if (duty.canCheckOut) {
-    return (
-      <Button
-        label={t('duty.checkOut')}
-        size="huge"
-        icon={<Ionicons name="log-out" size={26} color={colors.onPrimary} />}
-        onPress={() => router.push('/checkin?mode=out')}
-      />
-    );
-  }
-
-  // Upcoming shift: show what is next rather than a dead button (PRD 18.3 §5 "NEXT: 20:00 Gate 2").
-  if (duty.state === 'upcoming' && current) {
-    return (
-      <Pressable onPress={() => router.push('/briefing')} style={styles.nextCard}>
-        <Muted>{t('duty.next')}</Muted>
-        <Text style={styles.nextTime}>
-          {current.start} · {current.siteName}
-        </Text>
-        <View style={styles.rowGap}>
-          <Ionicons name="time" size={16} color={colors.warning} />
-          <Text style={styles.nextCountdown}>{countdown}</Text>
-        </View>
-      </Pressable>
-    );
-  }
-
-  if (duty.state === 'complete') {
-    return (
-      <View style={styles.doneCard}>
-        <Ionicons name="checkmark-circle" size={40} color={colors.onDuty} />
-        <Text style={styles.doneText}>{t('duty.complete')}</Text>
-      </View>
-    );
-  }
-
-  // Rostered today but the check-in window has closed: the marketplace toggle below would be
-  // the wrong answer (seen on a phone). Only the supervisor can mark this guard present now.
-  if (current && (duty.state === 'late' || duty.state === 'absent')) {
-    const supervisor = current.site.escalationContacts.find((c) => c.role === 'supervisor');
-    return (
-      <Card style={{ borderColor: colors.danger }}>
-        <Body style={{ fontWeight: '800' }}>{t('duty.checkInClosed')}</Body>
-        <Button
-          label={t('help.callSupervisor')}
-          variant="danger"
-          icon={<Ionicons name="call" size={20} color="#fff" />}
-          onPress={() =>
-            router.push((supervisor?.phone ? `/help?call=${encodeURIComponent(supervisor.phone)}` : '/help') as any)
-          }
-        />
-      </Card>
-    );
-  }
-
-  // No roster today — fall back to the on-demand marketplace toggle.
-  return (
-    <Button
-      label={online ? t('duty.goOffline') : t('duty.goOnline')}
-      size="huge"
-      variant={online ? 'ghost' : 'primary'}
-      icon={<Ionicons name={online ? 'pause' : 'flash'} size={24} color={online ? colors.text : colors.onPrimary} />}
-      onPress={onGoOnline}
-      loading={busy}
-    />
-  );
-}
-
-function ShiftCard({ assignment }: { assignment: CurrentAssignment }) {
-  const t = useT();
-  const router = useRouter();
-  const supervisor = assignment.site.escalationContacts.find((c) => c.role === 'supervisor');
-
-  return (
-    <Pressable onPress={() => router.push('/briefing')}>
-      <Card>
+      <Card style={isOnDuty ? { borderColor: colors.onDuty, borderWidth: 1.5 } : isCompleted ? { borderColor: 'rgba(34,197,94,0.3)' } : undefined}>
+        {/* Top Tag */}
         <View style={styles.rowBetween}>
-          <Muted>{t('duty.site')}</Muted>
           <View style={styles.rowGap}>
-            <Text style={styles.link}>{t('duty.briefing')}</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+            <Ionicons name="business" size={16} color={colors.primary} />
+            <Text style={{ fontSize: 15, fontWeight: '900', color: colors.text }}>
+              {clientName}
+            </Text>
+          </View>
+          <View style={[styles.badgePill, { backgroundColor: isCompleted ? colors.onDutyDim : isOnDuty ? colors.onDutyDim : 'rgba(245,198,35,0.1)' }]}>
+            <Text style={[styles.badgePillText, { color: isCompleted ? colors.onDuty : isOnDuty ? colors.onDuty : colors.primary }]}>
+              {contractCode} · Day {dayNum} of {totalDays}
+            </Text>
           </View>
         </View>
 
-        <Body style={{ fontWeight: '800' }}>{assignment.siteName}</Body>
-        {assignment.site.address ? <Muted>{assignment.site.address}</Muted> : null}
+        {/* Site & Timing */}
+        <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 4 }}>
+          {siteName} {current.site.address ? `· ${current.site.address}` : ''}
+        </Text>
 
-        <View style={styles.metaRow}>
-          <Meta icon="time" text={`${assignment.start}–${assignment.end}`} />
-          <Meta icon="briefcase" text={assignment.shiftType || '—'} />
+        <View style={[styles.metaRow, { marginTop: 6, marginBottom: 12 }]}>
+          <Meta icon="time" text={shiftTiming} tone={colors.text} />
+          {current.shiftType ? <Meta icon="briefcase" text={current.shiftType} /> : null}
         </View>
 
-        {assignment.checkedInAt ? (
-          <Meta icon="log-in" text={`${t('duty.checkedInAt')} ${istTime(assignment.checkedInAt)}`} tone={colors.onDuty} />
+        {/* ---------------- STATE 1: SHIFT COMPLETED FOR TODAY ---------------- */}
+        {isCompleted ? (
+          <View style={styles.shiftCompletedBox}>
+            <View style={styles.rowGap}>
+              <Ionicons name="checkmark-circle" size={24} color={colors.onDuty} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '900', color: colors.onDuty }}>
+                  ✓ Today's Duty Completed
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>
+                  {current.checkedInAt ? istTime(current.checkedInAt) : current.start} → {current.checkedOutAt ? istTime(current.checkedOutAt) : current.end}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.rowBetween}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>
+                Day {dayNum} / {totalDays} — Completed
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '700' }}>
+                Next Shift: Tomorrow
+              </Text>
+            </View>
+          </View>
         ) : null}
 
-        {!assignment.site.geoKnown ? (
-          <Meta icon="help-circle" text={t('duty.siteNotMapped')} tone={colors.warning} />
+        {/* ---------------- STATE 2: ON DUTY (CHECKED IN) ---------------- */}
+        {isOnDuty && !isCompleted ? (
+          <View style={{ gap: space.sm }}>
+            <View style={styles.checkedInInfoBox}>
+              <View style={styles.rowGap}>
+                <Ionicons name="radio-button-on" size={16} color={colors.onDuty} />
+                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.onDuty }}>
+                  Checked In at {current.checkedInAt ? istTime(current.checkedInAt) : current.start}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 12, color: colors.textMuted }}>
+                Duty ends at {current.end}
+              </Text>
+            </View>
+
+            <Button
+              label={t('duty.checkOut') || 'Check Out'}
+              size="huge"
+              variant="danger"
+              icon={<Ionicons name="log-out" size={24} color="#fff" />}
+              onPress={() => router.push('/checkin?mode=out')}
+            />
+          </View>
         ) : null}
 
-        {assignment.isReliever ? (
-          <Meta
-            icon="swap-horizontal"
-            text={`${t('duty.reliever')}${assignment.replacedGuardName ? ` · ${assignment.replacedGuardName}` : ''}`}
-            tone={colors.info}
-          />
-        ) : null}
+        {/* ---------------- STATE 3: READY TO CHECK IN / UPCOMING ---------------- */}
+        {!isOnDuty && !isCompleted ? (
+          <View style={{ gap: space.sm }}>
+            {duty.state === 'upcoming' ? (
+              <View style={styles.upcomingInfoBox}>
+                <Ionicons name="time" size={16} color={colors.warning} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.warning }}>
+                  Shift starts in {countdown}
+                </Text>
+              </View>
+            ) : null}
 
-        {supervisor?.phone ? (
-          <Pressable onPress={() => router.push(`/help?call=${encodeURIComponent(supervisor.phone)}` as any)}>
-            <Meta icon="call" text={`${supervisor.name || t('duty.supervisor')} · ${supervisor.phone}`} tone={colors.primary} />
-          </Pressable>
+            {duty.state === 'late' || duty.state === 'absent' ? (
+              <View style={styles.lateInfoBox}>
+                <Ionicons name="alert-circle" size={16} color={colors.danger} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.danger, flex: 1 }}>
+                  Check-in window closed. Contact supervisor for override.
+                </Text>
+              </View>
+            ) : null}
+
+            <Button
+              label={t('duty.checkIn') || 'Check In'}
+              size="huge"
+              variant="success"
+              icon={<Ionicons name="log-in" size={26} color="#fff" />}
+              onPress={() => router.push('/checkin?mode=in')}
+            />
+          </View>
         ) : null}
       </Card>
-    </Pressable>
+    );
+  }
+
+  // If on-demand B2C booking
+  if (booking && booking.bookingStatus !== 'PENDING_ACCEPTANCE' && booking.bookingStatus !== 'COMPLETED') {
+    return <BookingCard booking={booking} />;
+  }
+
+  // Fallback: No scheduled duty today -> Marketplace Online/Offline toggle
+  return (
+    <Card style={{ alignItems: 'center', paddingVertical: space.xl, gap: space.md }}>
+      <Ionicons name="moon-outline" size={36} color={colors.textFaint} />
+      <View style={{ alignItems: 'center', gap: 2 }}>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>
+          No Scheduled Duty Today
+        </Text>
+        <Muted style={{ textAlign: 'center' }}>
+          Go online to receive on-demand security requests in your area.
+        </Muted>
+      </View>
+      <Button
+        label={online ? t('duty.goOffline') || 'Go Offline' : t('duty.goOnline') || 'Go Online'}
+        size="huge"
+        variant={online ? 'ghost' : 'primary'}
+        icon={<Ionicons name={online ? 'pause' : 'flash'} size={24} color={online ? colors.text : colors.onPrimary} />}
+        onPress={onGoOnline}
+        loading={busy}
+      />
+    </Card>
+  );
+}
+
+/**
+ * My Contracts Section Card
+ */
+function MyContractsCard({
+  contract,
+  onViewDetails,
+  onLeaveContract,
+  onRequestDayLeave,
+}: {
+  contract: ContractOffer;
+  onViewDetails: () => void;
+  onLeaveContract: () => void;
+  onRequestDayLeave: () => void;
+}) {
+  const totalDays = contract.totalDays || 30;
+  const completedDays = contract.completedDaysCount || Math.max(1, (contract.currentDayNumber || 1) - 1);
+  const pct = Math.min(100, Math.round((completedDays / totalDays) * 100));
+
+  return (
+    <Card style={{ backgroundColor: '#13161A', borderColor: colors.border }}>
+      <View style={styles.rowBetween}>
+        <View style={styles.rowGap}>
+          <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
+          <Text style={{ fontSize: 15, fontWeight: '900', color: colors.text }}>
+            {contract.client}
+          </Text>
+        </View>
+        <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary }}>
+          {contract.contractCode || 'ACTIVE'}
+        </Text>
+      </View>
+
+      <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 4 }}>
+        {contract.startDate} to {contract.endDate} · Shift: {contract.shiftTiming}
+      </Text>
+
+      {/* Progress Bar */}
+      <View style={{ marginTop: 12, gap: 6 }}>
+        <View style={styles.rowBetween}>
+          <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textMuted }}>
+            Progress
+          </Text>
+          <Text style={{ fontSize: 12, fontWeight: '900', color: colors.primary }}>
+            {completedDays}/{totalDays} Days ({pct}%)
+          </Text>
+        </View>
+
+        <View style={styles.progressBarBackground}>
+          <View style={[styles.progressBarFill, { width: `${pct}%` }]} />
+        </View>
+      </View>
+
+      {/* Quick Action Buttons */}
+      <View style={{ flexDirection: 'row', gap: space.sm, marginTop: 12 }}>
+        <Pressable onPress={onViewDetails} style={[styles.actionBtn, { flex: 1.4, backgroundColor: 'rgba(245,198,35,0.08)', borderColor: 'rgba(245,198,35,0.2)' }]}>
+          <Ionicons name="calendar-outline" size={15} color={colors.primary} />
+          <Text style={[styles.actionBtnText, { color: colors.primary }]}>View History</Text>
+        </Pressable>
+
+        <Pressable onPress={onRequestDayLeave} style={[styles.actionBtn, { flex: 1, backgroundColor: 'rgba(59,130,246,0.08)', borderColor: 'rgba(59,130,246,0.2)' }]}>
+          <Ionicons name="time-outline" size={15} color={colors.info} />
+          <Text style={[styles.actionBtnText, { color: colors.info }]}>1-Day Leave</Text>
+        </Pressable>
+
+        <Pressable onPress={onLeaveContract} style={[styles.actionBtn, { flex: 0.9, backgroundColor: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)' }]}>
+          <Ionicons name="exit-outline" size={15} color={colors.danger} />
+          <Text style={[styles.actionBtnText, { color: colors.danger }]}>Quit</Text>
+        </Pressable>
+      </View>
+    </Card>
+  );
+}
+
+/**
+ * Modal showing complete day-by-day attendance sheet
+ */
+function ContractHistoryModal({
+  contract,
+  onClose,
+  onRequestDayLeave,
+}: {
+  contract: ContractOffer;
+  onClose: () => void;
+  onRequestDayLeave: () => void;
+}) {
+  const totalDays = contract.totalDays || 30;
+  const currentDay = contract.currentDayNumber || 1;
+  const breakdown = contract.dailyBreakdown || [];
+
+  return (
+    <Modal visible animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>{contract.client}</Text>
+              <Text style={{ fontSize: 12, color: colors.textMuted }}>
+                {contract.contractCode || 'Contract'} · {contract.startDate} to {contract.endDate}
+              </Text>
+            </View>
+            <Pressable onPress={onClose} style={styles.modalCloseButton}>
+              <Ionicons name="close" size={22} color={colors.text} />
+            </Pressable>
+          </View>
+
+          <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+            <Text style={styles.modalSectionHeader}>Daily Attendance Schedule</Text>
+
+            {breakdown.length > 0 ? (
+              breakdown.map((item, idx) => {
+                const dayIndex = idx + 1;
+                const isDone = item.status === 'Completed';
+                const isToday = dayIndex === currentDay || item.status === 'On Duty' || item.status === 'Scheduled';
+
+                return (
+                  <View key={item.date} style={styles.historyRow}>
+                    <View style={styles.rowGap}>
+                      <Ionicons
+                        name={isDone ? 'checkmark-circle' : isToday ? 'radio-button-on' : 'ellipse-outline'}
+                        size={18}
+                        color={isDone ? colors.onDuty : isToday ? colors.primary : colors.textFaint}
+                      />
+                      <View>
+                        <Text style={{ fontSize: 13, fontWeight: isToday ? '800' : '600', color: isToday ? colors.text : colors.textMuted }}>
+                          Day {dayIndex} · {item.date}
+                        </Text>
+                        {item.checkInTime ? (
+                          <Text style={{ fontSize: 10, color: colors.textFaint }}>
+                            {istTime(item.checkInTime)} {item.checkOutTime ? `→ ${istTime(item.checkOutTime)}` : ''}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        color: isDone ? colors.onDuty : isToday ? colors.primary : colors.textFaint,
+                      }}
+                    >
+                      {item.status}
+                    </Text>
+                  </View>
+                );
+              })
+            ) : (
+              Array.from({ length: totalDays }).map((_, idx) => {
+                const dayIndex = idx + 1;
+                const isDone = dayIndex < currentDay;
+                const isToday = dayIndex === currentDay;
+
+                return (
+                  <View key={idx} style={styles.historyRow}>
+                    <View style={styles.rowGap}>
+                      <Ionicons
+                        name={isDone ? 'checkmark-circle' : isToday ? 'radio-button-on' : 'ellipse-outline'}
+                        size={18}
+                        color={isDone ? colors.onDuty : isToday ? colors.primary : colors.textFaint}
+                      />
+                      <Text style={{ fontSize: 13, fontWeight: isToday ? '800' : '600', color: isToday ? colors.text : colors.textMuted }}>
+                        Day {dayIndex} of {totalDays}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        color: isDone ? colors.onDuty : isToday ? colors.primary : colors.textFaint,
+                      }}
+                    >
+                      {isDone ? '✓ Completed' : isToday ? '● Today' : 'Upcoming'}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+
+          <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
+            <View style={{ flex: 1 }}>
+              <Button label="Request Day Leave" variant="primary" size="small" onPress={onRequestDayLeave} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button label="Close" variant="ghost" size="small" onPress={onClose} />
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/**
+ * Modal to Leave / Relinquish Contract permanently
+ */
+function LeaveContractModal({
+  contract,
+  onClose,
+  onConfirm,
+}: {
+  contract: ContractOffer;
+  onClose: () => void;
+  onConfirm: (reason: string) => Promise<void>;
+}) {
+  const [reason, setReason] = useState('Personal reasons / unable to continue');
+  const [loading, setLoading] = useState(false);
+
+  const REASONS = [
+    'Personal reasons / unable to continue',
+    'Shift timing / location conflict',
+    'Health / medical issues',
+    'Better opportunity / relocation',
+  ];
+
+  return (
+    <Modal visible animationType="fade" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <View style={styles.rowGap}>
+              <Ionicons name="warning" size={22} color={colors.danger} />
+              <Text style={[styles.modalTitle, { color: colors.danger }]}>Leave Contract</Text>
+            </View>
+            <Pressable onPress={onClose} style={styles.modalCloseButton}>
+              <Ionicons name="close" size={22} color={colors.text} />
+            </Pressable>
+          </View>
+
+          <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 12 }}>
+            Are you sure you want to quit contract <Text style={{ fontWeight: '800', color: colors.text }}>{contract.client}</Text>? Your agency will be notified immediately to reassign a replacement guard.
+          </Text>
+
+          <Text style={styles.modalSectionHeader}>Select Reason:</Text>
+          <View style={{ gap: 6, marginBottom: 16 }}>
+            {REASONS.map((r) => {
+              const active = reason === r;
+              return (
+                <Pressable
+                  key={r}
+                  onPress={() => setReason(r)}
+                  style={[
+                    styles.reasonOption,
+                    active ? styles.reasonOptionActive : null,
+                  ]}
+                >
+                  <Ionicons
+                    name={active ? 'radio-button-on' : 'radio-button-off'}
+                    size={16}
+                    color={active ? colors.primary : colors.textFaint}
+                  />
+                  <Text style={[styles.reasonOptionText, active ? { color: colors.text, fontWeight: '700' } : null]}>
+                    {r}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <View style={{ flex: 1 }}>
+              <Button label="Cancel" variant="ghost" size="small" onPress={onClose} />
+            </View>
+            <View style={{ flex: 1.3 }}>
+              <Button
+                label="Confirm & Leave"
+                variant="danger"
+                size="small"
+                loading={loading}
+                onPress={async () => {
+                  setLoading(true);
+                  try {
+                    await onConfirm(reason);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              />
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/**
+ * Modal to Request 1-Day Leave during contract
+ */
+function RequestDayLeaveModal({
+  contract,
+  onClose,
+  onConfirm,
+}: {
+  contract: ContractOffer;
+  onClose: () => void;
+  onConfirm: (date: string, reason: string) => Promise<void>;
+}) {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const defaultDate = tomorrow.toISOString().slice(0, 10);
+
+  const [date, setDate] = useState(defaultDate);
+  const [reason, setReason] = useState('Medical appointment');
+  const [loading, setLoading] = useState(false);
+
+  return (
+    <Modal visible animationType="fade" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <View style={styles.rowGap}>
+              <Ionicons name="calendar" size={20} color={colors.primary} />
+              <Text style={styles.modalTitle}>Request Shift Leave</Text>
+            </View>
+            <Pressable onPress={onClose} style={styles.modalCloseButton}>
+              <Ionicons name="close" size={22} color={colors.text} />
+            </Pressable>
+          </View>
+
+          <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 12 }}>
+            Apply for leave on a specific day of this contract. Agency portal will arrange a reliever guard.
+          </Text>
+
+          <Text style={styles.inputLabel}>Leave Date (YYYY-MM-DD):</Text>
+          <TextInput
+            value={date}
+            onChangeText={setDate}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={colors.textFaint}
+            style={styles.textInput}
+          />
+
+          <Text style={[styles.inputLabel, { marginTop: 12 }]}>Reason for Leave:</Text>
+          <TextInput
+            value={reason}
+            onChangeText={setReason}
+            placeholder="Reason for taking leave"
+            placeholderTextColor={colors.textFaint}
+            style={styles.textInput}
+          />
+
+          <View style={{ flexDirection: 'row', gap: space.sm, marginTop: 16 }}>
+            <View style={{ flex: 1 }}>
+              <Button label="Cancel" variant="ghost" size="small" onPress={onClose} />
+            </View>
+            <View style={{ flex: 1.3 }}>
+              <Button
+                label="Submit Request"
+                variant="primary"
+                size="small"
+                loading={loading}
+                onPress={async () => {
+                  setLoading(true);
+                  try {
+                    await onConfirm(date, reason);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              />
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -592,28 +1103,14 @@ function BookingCard({ booking }: { booking: any }) {
           </Text>
         </View>
       </View>
-
       <Body style={{ fontWeight: '800' }}>{booking.customerName || 'Client Booking'}</Body>
       <Muted>{address}</Muted>
-
       <View style={styles.metaRow}>
         <Meta icon="briefcase" text={booking.serviceType || 'Security Service'} />
         {booking.schedule?.startTime ? (
           <Meta icon="time" text={`${booking.schedule.startTime}${booking.schedule.endTime ? `–${booking.schedule.endTime}` : ''}`} />
         ) : null}
       </View>
-
-      {isPendingCheckin ? (
-        <Meta icon="key" text={t('duty.arrivalOtp')} tone={colors.warning} />
-      ) : null}
-
-      {isCheckout ? (
-        <Meta icon="key" text={t('duty.checkoutOtp')} tone={colors.warning} />
-      ) : null}
-
-      {booking.dutyDetails?.dutyStartedAt ? (
-        <Meta icon="log-in" text={`${t('duty.checkedInAt')} ${istTime(booking.dutyDetails.dutyStartedAt)}`} tone={colors.onDuty} />
-      ) : null}
     </Card>
   );
 }
@@ -630,7 +1127,7 @@ function ContractOfferCard({
   onReject: () => Promise<void>;
 }) {
   return (
-    <Card style={{ borderColor: colors.primary, borderWidth: 1.5, backgroundColor: 'rgba(59,130,246,0.04)' }}>
+    <Card style={{ borderColor: colors.primary, borderWidth: 1.5, backgroundColor: 'rgba(245,198,35,0.04)' }}>
       <View style={styles.rowBetween}>
         <View style={styles.rowGap}>
           <Ionicons name="document-text" size={16} color={colors.primary} />
@@ -688,20 +1185,9 @@ function Meta({ icon, text, tone }: { icon: keyof typeof Ionicons.glyphMap; text
   );
 }
 
-/**
- * The duty timeline strip (PRD 18.3 §5): Check-in ✓ · Patrol 1 ✓ · Patrol 2 ○ · Wake ○ · Check-out ○.
- *
- * It scrolls **horizontally** and stays one row tall. A 12-hour shift with hourly rounds produces
- * fourteen-odd chips, and wrapping those over four rows pushes the quick grid off the screen —
- * the opposite of "no scrolling required to reach the primary action".
- *
- * It also auto-scrolls to the first thing still outstanding, so the chip the guard actually needs
- * is the one in view rather than a row of already-completed rounds.
- */
 function Timeline({ items }: { items: TimelineItem[] }) {
   const router = useRouter();
   const t = useT();
-  /** Server labels are English; translate by kind (`check_in`, `patrol:<id>`, `wake:<id>`, `check_out`). */
   const chipLabel = (item: TimelineItem) => {
     const kind = item.key.split(':')[0];
     const n = item.label.match(/(\d+)\s*$/)?.[1] ?? '';
@@ -714,7 +1200,7 @@ function Timeline({ items }: { items: TimelineItem[] }) {
 
   useEffect(() => {
     if (firstPending <= 0) return;
-    const CHIP = 104; // approximate chip width + gap; exact placement is not important here
+    const CHIP = 104;
     const timer = setTimeout(
       () => scroller.current?.scrollTo({ x: Math.max(0, (firstPending - 1) * CHIP), animated: false }),
       0
@@ -793,9 +1279,156 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.sm,
   },
   syncCount: { color: colors.textMuted, fontSize: font.tiny, fontWeight: '900' },
+  testDateBar: {
+    backgroundColor: 'rgba(245,198,35,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,198,35,0.2)',
+    borderRadius: radius.md,
+    padding: space.sm,
+    gap: 4,
+  },
+  testDateHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  testDateTitle: { fontSize: 10, fontWeight: '900', color: colors.warning, letterSpacing: 0.5 },
+  resetDateChip: { backgroundColor: colors.warningDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill },
+  resetDateText: { fontSize: 10, fontWeight: '800', color: colors.warning },
+  testDateChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  testDateChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  testDateChipText: { fontSize: 11, fontWeight: '700', color: colors.textMuted },
+  testDateChipTextActive: { color: '#0B0D0F', fontWeight: '900' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowGap: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   link: { color: colors.primary, fontSize: font.tiny, fontWeight: '700' },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginTop: space.sm },
+  sectionBadge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sectionTitle: { color: colors.primary, fontSize: 12, fontWeight: '900', letterSpacing: 1 },
+  badgePill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
+  badgePillText: { fontSize: 11, fontWeight: '800' },
+  shiftCompletedBox: {
+    backgroundColor: 'rgba(34,197,94,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.25)',
+    borderRadius: radius.md,
+    padding: space.md,
+    gap: space.xs,
+  },
+  checkedInInfoBox: {
+    backgroundColor: 'rgba(34,197,94,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.3)',
+    borderRadius: radius.md,
+    padding: space.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  upcomingInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    backgroundColor: colors.warningDim,
+    padding: space.sm,
+    borderRadius: radius.sm,
+  },
+  lateInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    backgroundColor: colors.dangerDim,
+    padding: space.sm,
+    borderRadius: radius.sm,
+  },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 4 },
+  progressBarBackground: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 4,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: radius.md,
+    borderWidth: 1,
+  },
+  actionBtnText: { fontSize: 11, fontWeight: '800' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#16191E',
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: space.lg,
+    maxHeight: '85%',
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: space.md,
+    paddingBottom: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '900', color: colors.text },
+  modalCloseButton: { padding: space.xs },
+  modalSectionHeader: { fontSize: 13, fontWeight: '800', color: colors.primary, marginBottom: space.sm, textTransform: 'uppercase' },
+  historyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
+  },
+  reasonOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  reasonOptionActive: {
+    backgroundColor: 'rgba(245,198,35,0.08)',
+    borderColor: colors.primary,
+  },
+  reasonOptionText: { fontSize: 12, color: colors.textMuted },
+  inputLabel: { fontSize: 12, fontWeight: '700', color: colors.textMuted, marginBottom: 4 },
+  textInput: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    color: colors.text,
+    padding: space.md,
+    fontSize: 13,
+  },
   notice: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -808,30 +1441,6 @@ const styles = StyleSheet.create({
   noticeText: { flex: 1, fontSize: font.label, fontWeight: '700' },
   metaRow: { flexDirection: 'row', gap: space.lg, flexWrap: 'wrap' },
   metaText: { color: colors.textMuted, fontSize: font.label, fontWeight: '600' },
-  nextCard: {
-    minHeight: touch.hugeButtonHeight,
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.warning,
-    padding: space.lg,
-    gap: space.xs,
-    justifyContent: 'center',
-  },
-  nextTime: { color: colors.text, fontSize: font.h2, fontWeight: '900' },
-  nextCountdown: { color: colors.warning, fontSize: font.h3, fontWeight: '900', letterSpacing: 1 },
-  doneCard: {
-    minHeight: touch.hugeButtonHeight,
-    backgroundColor: colors.onDutyDim,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.onDuty,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.sm,
-    flexDirection: 'row',
-  },
-  doneText: { color: colors.onDuty, fontSize: font.h3, fontWeight: '900' },
   blockedCard: {
     backgroundColor: colors.warningDim,
     borderRadius: radius.lg,
@@ -846,11 +1455,8 @@ const styles = StyleSheet.create({
   chip: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: touch.minTap, paddingHorizontal: space.xs },
   chipLink: { width: 14, height: 1, backgroundColor: colors.border },
   chipText: { fontSize: font.tiny, fontWeight: '700' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: space.sm },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: space.sm, marginTop: space.sm },
   tile: {
-    // PRD 18.3 quick grid: six tiles, three across, two rows. Height comes from padding, not a
-    // fixed aspect ratio, so a larger system font grows the tile instead of pushing the label
-    // onto the border (seen on a phone).
     width: '31.8%',
     minHeight: 92,
     paddingVertical: space.lg,

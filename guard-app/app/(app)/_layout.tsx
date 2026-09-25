@@ -71,19 +71,15 @@ export default function AppLayout() {
     useAuth.getState().touch();
     const sub = AppState.addEventListener('change', async (s) => {
       if (s === 'active') {
-        // Back after 12 unused hours: ask for the PIN (the login itself is kept). Never during a
-        // shift — a wake prompt or an SOS must not wait behind a PIN.
-        const dutyState = useDuty.getState().duty.state;
-        const onShift = dutyState === 'on_duty' || dutyState === 'check_out';
-        if (!onShift && (await useAuth.getState().lockIfIdle())) {
+        const { hasPin, needsPin } = useAuth.getState();
+        if (hasPin && needsPin) {
           router.replace('/pin?mode=enter');
           return;
         }
         useAuth.getState().touch();
         start();
       } else {
-        // Leaving the app counts as use, so the 12 hours start from here.
-        useAuth.getState().touch();
+        useAuth.getState().lockApp();
         stop();
       }
     });

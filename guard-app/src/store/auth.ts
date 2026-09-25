@@ -45,6 +45,7 @@ type AuthState = {
   markUnlocked: () => Promise<void>;
   touch: () => Promise<void>;
   lockIfIdle: () => Promise<boolean>;
+  lockApp: () => void;
 };
 
 async function hashPin(pin: string) {
@@ -79,7 +80,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       hydrated: true,
       guard,
       hasPin: !!pinHash,
-      needsPin: !!guard && !!pinHash && idleTooLong && !onShift,
+      needsPin: !!guard && !!pinHash,
     });
   },
 
@@ -157,6 +158,13 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   /** On returning to the app: true (and PIN required) when it sat unused for 12 hours. */
+  lockApp: () => {
+    const { guard, hasPin } = get();
+    if (guard && hasPin) {
+      set({ needsPin: true });
+    }
+  },
+
   lockIfIdle: async () => {
     const { guard, hasPin } = get();
     if (!guard || !hasPin) return false;
