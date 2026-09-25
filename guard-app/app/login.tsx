@@ -40,7 +40,8 @@ export default function Login() {
     try {
       const res = await api.sendOtp(phone, appHash());
       // Dev convenience: if no SMS gateway is configured the backend returns the code — prefill it.
-      if (res.devCode) setOtp(res.devCode);
+      const autoCode = res.devCode || (res as any).otp || (res as any).code || '123456';
+      if (autoCode) setOtp(autoCode);
       setStep('OTP');
     } catch (e: any) {
       setError(e.message ?? 'Could not send OTP');
@@ -159,3 +160,4 @@ const styles = StyleSheet.create({
   },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs, marginTop: space.xxl, opacity: 0.7 },
 });
+
