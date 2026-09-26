@@ -562,7 +562,8 @@ export const api = {
       message?: string;
     }>(
       '/api/guard/auth/verify-otp',
-      { method: 'POST', body: { phone: e164(phone),
+      { method: 'POST', body: { phone: e164(phone), otp, ...device } }
+    ),
 
   checkStatus: (phone?: string, guardId?: string) =>
     request<{
@@ -577,8 +578,7 @@ export const api = {
     }>('/api/guard/auth/check', {
       method: 'POST',
       body: { phone: phone ? e164(phone) : undefined, guardId },
-    }), otp, ...device } }
-    ),
+    }),
 
   // ---- Agency link (uses existing approved-agency directory) ----
   agenciesApproved: () =>

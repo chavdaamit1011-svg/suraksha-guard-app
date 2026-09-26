@@ -7,6 +7,7 @@ import { useT } from '@/i18n';
 import { api, e164 } from '@/lib/api';
 import { deviceMeta, getDeviceId } from '@/lib/device';
 import { appHash, listenForOtp } from '@/lib/native';
+import { secure, store } from '@/lib/storage';
 import { useAuth } from '@/store/auth';
 import { colors, font, radius, space } from '@/theme';
 
@@ -61,7 +62,10 @@ export default function Login() {
       const res = await api.verifyOtp(phone, code, device);
       if (res.registrationStatus === 'PENDING_APPROVAL') {
         // Guard submitted registration and is waiting for OPS approval
-        router.replace(`/pending-approval?phone=${encodeURIComponent(e164(phone))}`);
+        const finalPhone = e164(phone);
+        await secure.set('sg.pendingPhone', finalPhone).catch(() => {});
+        await store.setJSON('sg.pendingPhone', finalPhone).catch(() => {});
+        router.replace(`/pending-approval?phone=${encodeURIComponent(finalPhone)}`);
         return;
       }
       if (res.registrationStatus === 'DECLINED') {

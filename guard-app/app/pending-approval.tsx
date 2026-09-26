@@ -66,6 +66,12 @@ export default function PendingApproval() {
             expiresAt: res.sessionExpiresAt ?? null,
           });
 
+          // Clean up pending registration storage
+          await secure.del('sg.pendingPhone').catch(() => {});
+          await secure.del('sg.pendingGuardId').catch(() => {});
+          await store.del('sg.pendingPhone').catch(() => {});
+          await store.del('sg.pendingGuardId').catch(() => {});
+
           // Wait a moment so guard sees "Approved Successfully!", then route to PIN setup or home
           setTimeout(() => {
             router.replace(hasPin ? '/home' : '/pin?mode=set');
@@ -162,7 +168,7 @@ export default function PendingApproval() {
             <>
               <Button
                 label={checking ? 'Checking Status…' : 'Check Status Now'}
-                variant="outline"
+                variant="primary"
                 onPress={checkStatus}
                 disabled={checking}
               />
@@ -325,7 +331,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(245,198,35,0.25)',
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    borderRadius: radius.full,
+    borderRadius: radius.pill,
     marginTop: space.xs,
   },
   statusBadgeText: {
@@ -342,7 +348,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(16,185,129,0.4)',
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    borderRadius: radius.full,
+    borderRadius: radius.pill,
     marginTop: space.xs,
   },
   approvedBadgeText: {

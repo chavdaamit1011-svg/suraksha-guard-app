@@ -8,8 +8,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Modal, Platform, Linking, StyleSheet, Text, TouchableOpacity, View, Image } from 'react-native';
 import { Button, Card, Field, H1, Muted, Screen } from '@/components/ui';
 import { useT } from '@/i18n';
-import { api } from '@/lib/api';
+import { api, e164 } from '@/lib/api';
 import { quickFix } from '@/lib/location';
+import { secure, store } from '@/lib/storage';
 import { colors, font, radius, space } from '@/theme';
 
 export default function Register() {
@@ -121,10 +122,11 @@ export default function Register() {
     if (!name.trim() || !city.trim()) return setError('Name and city are required.');
     if (!/^[2-9]\d{11}$/.test(aadhaarNumber)) return setError('Enter a valid 12-digit Aadhaar number.');
     if (!docAadhaar) return setError('Please upload your Aadhaar card.');
+    if (!docPhoto) return setError('Please take a live selfie.');
     setError('');
     setLoading(true);
     try {
-      await api.register({
+      const regRes = await api.register({
         phone,
         name: name.trim(),
         city: city.trim(),
@@ -134,12 +136,21 @@ export default function Register() {
         registerTicket: ticket,
         docAadhaar,
         docPan: docPan ?? '',
-        docPhoto: docPhoto ?? '',
-        selfieUrl: docPhoto ?? '',
+        docPhoto: docPhoto,
+        selfieUrl: docPhoto,
         ...coords,
       });
+
+      const finalPhone = e164(phone);
+      const finalGid = regRes.guardId || (regRes.guard?._id ? String(regRes.guard._id) : '');
+
+      await secure.set('sg.pendingPhone', finalPhone).catch(() => {});
+      if (finalGid) await secure.set('sg.pendingGuardId', finalGid).catch(() => {});
+      await store.setJSON('sg.pendingPhone', finalPhone).catch(() => {});
+      if (finalGid) await store.setJSON('sg.pendingGuardId', finalGid).catch(() => {});
+
       // Registration submitted — waiting for OPS approval
-      router.replace('/pending-approval');
+      router.replace(`/pending-approval?phone=${encodeURIComponent(finalPhone)}${finalGid ? `&guardId=${encodeURIComponent(finalGid)}` : ''}`);
     } catch (e: any) {
       setError(e.message ?? 'Could not submit registration');
     } finally {
@@ -186,7 +197,7 @@ export default function Register() {
             disabled={loading || picking}
           />
           <DocUploadRow
-            label="Live selfie (optional)"
+            label="Live selfie *"
             uri={docPhoto}
             onPress={() => openCamera('selfie')}
             camera
