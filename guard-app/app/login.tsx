@@ -59,6 +59,16 @@ export default function Login() {
     try {
       const device = { deviceId: await getDeviceId(), deviceModel: deviceMeta.model };
       const res = await api.verifyOtp(phone, code, device);
+      if (res.registrationStatus === 'PENDING_APPROVAL') {
+        // Guard submitted registration and is waiting for OPS approval
+        router.replace('/pending-approval');
+        return;
+      }
+      if (res.registrationStatus === 'DECLINED') {
+        // Guard's registration was declined by OPS
+        router.replace(`/declined?msg=${encodeURIComponent(res.message ?? '')}`);
+        return;
+      }
       if (res.exists && res.guard) {
         await setGuard(res.guard, { token: res.sessionToken ?? null, expiresAt: res.sessionExpiresAt ?? null });
         if (res.deviceStatus === 'change_pending') {

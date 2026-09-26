@@ -5,12 +5,14 @@ import { guardPhonePattern } from '@/lib/guardPhone';
 const inactive = (record: any) => !record || record.isActive === false ||
   ['inactive', 'deleted', 'suspended', 'terminated', 'rejected', 'disabled'].includes(String(record.status ?? '').toLowerCase());
 const objectId = (id: string) => mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : null;
+const opsAgencyIds = new Set(['hq-ops', 'ops', 'suraksha', 'suraksha-ops', 'suraksha direct agency', 'suraksha default agency']);
+const isOpsAgency = (id: unknown) => !id || opsAgencyIds.has(String(id).trim().toLowerCase());
 
 /** Resolve stable agency identifiers, never reusable company/display names. */
 async function agencyExists(id: string): Promise<boolean> {
   if (!id) return false;
   const aid = id.toLowerCase().trim();
-  if (['hq-ops', 'ops', 'suraksha', 'suraksha-ops', 'suraksha direct agency', 'suraksha default agency'].includes(aid)) return true;
+  if (opsAgencyIds.has(aid)) return true;
   const db = mongoose.connection;
   const oid = objectId(id);
   if (oid) {
@@ -28,15 +30,37 @@ async function agencyExists(id: string): Promise<boolean> {
 }
 
 async function allowed(guard: any): Promise<boolean> {
-  if (inactive(guard) || guard.registrationStatus === 'REJECTED') return false;
-  if (guard.authSource === 'ops') {
-    const sourceId = objectId(String(guard.opsRecordId ?? ''));
-    if (!sourceId) return false;
-    const source = await mongoose.connection.collection('ops_records').findOne({ _id: sourceId, module: 'guards' });
+  if (inactive(guard)) return false;
+  if (guard.registrationStatus === 'REJECTED') return false;
+  if (guard.registrationStatus === 'PENDING_APPROVAL') return false;
+  if (guard.registrationStatus === 'DECLINED') return false;
+  if (guard.authSource === 'ops' || isOpsAgency(guard.agencyId)) {
+    const db = mongoose.connection;
+    let source: any = null;
+    if (guard.opsRecordId) {
+      const sourceId = objectId(String(guard.opsRecordId));
+      if (!sourceId) return false;
+      source = await db.collection('ops_records').findOne({ _id: sourceId, module: 'guards' });
+    } else {
+      // Link legacy approved app registrations once. After linking, a recycled
+      // phone number must never make an old session valid again.
+      const pattern = guardPhonePattern(String(guard.phone));
+      const matches = await db.collection('ops_records').find({ module: 'guards', $or: [
+        { 'payload.phone': pattern }, { 'data.phone': pattern },
+      ] }).toArray();
+      if (matches.length !== 1) return false;
+      source = matches[0];
+      if (source.guardAppGuardId && String(source.guardAppGuardId) !== String(guard._id)) return false;
+    }
     const data = source ? { ...source.data, ...source.payload } : null;
     if (inactive(source) || inactive(data)) return false;
     if (!guardPhonePattern(String(data.phone)).test(String(guard.phone))) return false;
-    return data.agencyId ? agencyExists(String(data.agencyId)) : true;
+    if (data.agencyId && !await agencyExists(String(data.agencyId))) return false;
+    if (!guard.opsRecordId) {
+      await db.collection('apguards').updateOne({ _id: guard._id }, { $set: { authSource: 'ops', opsRecordId: String(source._id) } });
+    }
+    await db.collection('ops_records').updateOne({ _id: source._id }, { $set: { guardAppProvisioned: true, guardAppGuardId: String(guard._id) } });
+    return true;
   }
   return agencyExists(String(guard.agencyId ?? ''));
 }
@@ -65,7 +89,12 @@ export async function activeGuardByPhone(phone: string): Promise<any | null> {
   const eligible = [];
   for (const source of records) {
     const data = { ...source.data, ...source.payload };
-    if (source.guardAppProvisioned && !await db.collection('apguards').findOne({ _id: source._id })) continue;
+    // An AP deletion must not be undone by projecting the Ops row again.
+    const projectionId = objectId(String(source.guardAppGuardId || source._id));
+    const projection = projectionId && await db.collection('apguards').findOne({ _id: projectionId });
+    if (source.guardAppProvisioned && !projection) continue;
+    if (projection && (inactive(projection) || ['PENDING_APPROVAL', 'DECLINED', 'REJECTED'].includes(projection.registrationStatus))) continue;
+    if (projection && String(projection._id) !== String(source._id)) continue;
     if (!inactive(source) && !inactive(data) && pattern.test(String(data.phone)) &&
       (!data.agencyId || await agencyExists(String(data.agencyId)))) eligible.push({ source, data });
   }
@@ -82,7 +111,7 @@ export async function activeGuardByPhone(phone: string): Promise<any | null> {
   await db.collection('apguards').updateOne({ _id: source._id }, {
     $set: { ...guard, updatedAt: new Date() }, $setOnInsert: { isOnline: false, createdAt: new Date() },
   }, { upsert: true });
-  await db.collection('ops_records').updateOne({ _id: source._id, module: 'guards' }, { $set: { guardAppProvisioned: true } });
+  await db.collection('ops_records').updateOne({ _id: source._id, module: 'guards' }, { $set: { guardAppProvisioned: true, guardAppGuardId: String(source._id) } });
   return db.collection('apguards').findOne({ _id: source._id });
 }
 

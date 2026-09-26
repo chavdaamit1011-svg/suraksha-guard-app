@@ -129,7 +129,10 @@ export const useDuty = create<DutyStore>((set, get) => ({
   deviceStanding: 'ok',
 
   hydrateBundle: async () => {
+    const id = gid(useAuth.getState().guard);
+    if (!id) return;
     const cached = await kv.getJSON<DutyBundle | null>(KEYS.todayBundle, null);
+    if (gid(useAuth.getState().guard) !== id) return;
     if (cached) {
       const activeContract = cached.activeContract ?? null;
       const current = activeContract
@@ -163,12 +166,14 @@ export const useDuty = create<DutyStore>((set, get) => ({
       // seconds ago. Fetching first used to overwrite it with the pre-check-in state until the
       // next poll — long enough for a guard to think it failed and check in again.
       const flushedFirst = await flush(id).catch(() => null);
+      if (gid(useAuth.getState().guard) !== id) return;
       if (flushedFirst && (flushedFirst.sent > 0 || flushedFirst.failed > 0)) await get().refreshQueued();
 
       const res = await api.today(id, await getDeviceId(), get().selectedTestDate || undefined);
       const bundle = res.bundle;
       // Anything still waiting in the outbox (no network) is laid over the server's view.
       if (bundle.current) bundle.current = await withPendingAttendance(bundle.current);
+      if (gid(useAuth.getState().guard) !== id) return;
 
       // An unapproved second phone gets an empty bundle. Do not cache it over the real one —
       // if the change is approved, the next poll restores everything; and if the guard is on
@@ -186,6 +191,10 @@ export const useDuty = create<DutyStore>((set, get) => ({
       set({ deviceBlocked: false, deviceStanding: 'ok' });
 
       await kv.setJSON(KEYS.todayBundle, bundle);
+      if (gid(useAuth.getState().guard) !== id) {
+        await kv.del(KEYS.todayBundle);
+        return;
+      }
       set({
         bundle,
         current: bundle.current,
@@ -335,6 +344,15 @@ export const useDuty = create<DutyStore>((set, get) => ({
     set({ current: next, duty: computeDuty(next) });
   },
 }));
+
+useAuth.subscribe((state, previous) => {
+  if (gid(state.guard) === gid(previous.guard)) return;
+  armedForRosterId = '';
+  armedWakeKey = '';
+  useDuty.setState({ bundle: null, current: null, booking: null, timeline: [], alerts: [],
+    contractOffers: [], activeContract: null, myContracts: [], selectedTestDate: null,
+    online: false, duty: IDLE_DUTY, deviceBlocked: false, deviceStanding: 'ok', lastError: null });
+});
 
 // Fixes from the on-duty location service (which may run with the app in the background).
 setDutyLocationSink((lat, lng, heading) => {

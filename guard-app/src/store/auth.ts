@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { api } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { stopDutyTracking } from '@/lib/dutyTracking';
+import { disconnectSocket } from '@/lib/socket';
 import { pendingCount } from '@/lib/queue';
 import { destroyStoreKey } from '@/lib/secureStore';
 import { KEYS, secure, store } from '@/lib/storage';
@@ -63,10 +64,11 @@ export const useAuth = create<AuthState>((set, get) => ({
     await loadSession();
     // The server ended this login (logged out elsewhere, phone unlinked): sign out locally.
     onSignedOut(() => {
+      set({ guard: null, needsPin: false });
+      disconnectSocket();
       secure.del(KEYS.guard).catch(() => {});
       store.del(KEYS.todayBundle).catch(() => {});
       stopDutyTracking().catch(() => {});
-      set({ guard: null, needsPin: false });
     });
     const raw = await secure.get(KEYS.guard);
     const guard = raw ? (JSON.parse(raw) as Guard) : null;
@@ -93,7 +95,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     if (!g?._id) return;
     try {
       const res = await api.me(g._id);
-      if (res.guard) {
+      if (res.guard && get().guard === g) {
         const merged = { ...g, ...res.guard };
         await secure.set(KEYS.guard, JSON.stringify(merged));
         set({ guard: merged });

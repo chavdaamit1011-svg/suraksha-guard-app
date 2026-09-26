@@ -3,7 +3,7 @@ param([switch]$Apply)
 $ErrorActionPreference = 'Stop'
 $target = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../suraksha-app'))
 $source = Join-Path $PSScriptRoot 'src'
-$files = @('lib/guardAccess.ts', 'app/api/guard/auth/check/route.ts',
+$files = @('lib/guardAccess.ts', 'app/api/guard/access/route.ts', 'app/api/guard/auth/check/route.ts',
   'app/api/guard/auth/send-otp/route.ts', 'app/api/guard/auth/verify-otp/route.ts',
   'app/api/guard/auth/refresh/route.ts', 'app/api/guard/auth/register/route.ts')
 $existing = [IO.File]::ReadAllText("$target/src/proxy.ts")

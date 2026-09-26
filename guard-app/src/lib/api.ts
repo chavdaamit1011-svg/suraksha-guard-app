@@ -60,6 +60,9 @@ async function request<T = Json>(
   }
   if (res.status === 401 && !isAuthCall && (await handleUnauthorized(data?.code))) {
     ({ res, data } = await send());
+    if (data?.action === 'LOGOUT' || res.status === 401) {
+      await handleUnauthorized(data?.action === 'LOGOUT' ? 'guard_removed' : data?.code);
+    }
   }
   if (!res.ok || data?.success === false) {
     throw new ApiError(data?.message || data?.error || `Request failed (${res.status})`, res.status, data?.code);
@@ -554,6 +557,9 @@ export const api = {
       sessionToken?: string | null;
       sessionExpiresAt?: number | null;
       registerTicket?: string | null;
+      canRegister?: boolean;
+      registrationStatus?: 'PENDING_APPROVAL' | 'DECLINED' | 'APPROVED';
+      message?: string;
     }>(
       '/api/guard/auth/verify-otp',
       { method: 'POST', body: { phone: e164(phone), otp, ...device } }
@@ -626,7 +632,7 @@ export const api = {
     }>('/api/guard/face/enroll', { query: { guardId } }),
 
   register: (payload: Json) =>
-    request<{ success: boolean; guard: any; sessionToken?: string | null; sessionExpiresAt?: number | null }>(
+    request<{ success: boolean; guard?: any; guardId?: string; registrationStatus?: string; message?: string; sessionToken?: string | null; sessionExpiresAt?: number | null }>(
       '/api/guard/auth/register',
       { method: 'POST', body: payload }
     ),
@@ -634,6 +640,11 @@ export const api = {
   me: (guardId: string) =>
     request<{ success: boolean; guard: any; earnings?: any; bookings?: any[] }>('/api/guard/me', {
       query: { guardId },
+    }),
+
+  access: (guardId: string) =>
+    request<{ success: boolean; active: boolean }>('/api/guard/access', {
+      query: { guardId }, timeoutMs: 10000,
     }),
 
   // ---- On-demand duty (existing backend) ----

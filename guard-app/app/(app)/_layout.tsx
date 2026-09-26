@@ -3,6 +3,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { AppState, View } from 'react-native';
 import { SosButton } from '@/components/SosButton';
+import { api } from '@/lib/api';
 import { getLaunchNotificationData, onNotificationResponse } from '@/lib/notifications';
 import { flush } from '@/lib/queue';
 import { guardId, useAuth } from '@/store/auth';
@@ -20,9 +21,46 @@ export default function AppLayout() {
 
   // Signed out from outside the app (logout on another phone, phone unlinked by the agency).
   const guard = useAuth((s) => s.guard);
+  const currentGuardId = guardId(guard);
   useEffect(() => {
     if (!guard) router.replace('/login');
   }, [guard, router]);
+
+  // Access revocation must not wait behind duty uploads or roster computation.
+  useEffect(() => {
+    if (!currentGuardId) return;
+    let busy = false;
+    let disposed = false;
+    const check = async () => {
+      if (disposed || busy || guardId(useAuth.getState().guard) !== currentGuardId) return;
+      busy = true;
+      try {
+        await api.access(currentGuardId);
+      } catch {
+        // The API client signs out on guard_removed. Network errors retain offline access.
+      } finally {
+        busy = false;
+      }
+    };
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      void check();
+      timer ??= setInterval(check, 10000);
+    };
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+    if (AppState.currentState !== 'background') start();
+    const state = AppState.addEventListener('change', (value) => {
+      if (value === 'active') start();
+      else stop();
+    });
+    const network = NetInfo.addEventListener((value) => {
+      if (value.isConnected && value.isInternetReachable !== false && AppState.currentState !== 'background') void check();
+    });
+    return () => { disposed = true; stop(); state.remove(); network(); };
+  }, [currentGuardId]);
 
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
   const ticker = useRef<ReturnType<typeof setInterval> | null>(null);

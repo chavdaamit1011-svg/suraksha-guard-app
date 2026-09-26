@@ -12,7 +12,7 @@ parser.add_argument('--apply', action='store_true')
 args = parser.parse_args()
 source = Path(__file__).resolve().parent / 'src'
 app = Path(args.app).resolve()
-files = ['lib/guardAccess.ts', 'lib/guardPhone.ts', 'lib/guardCors.ts', 'lib/guardSession.ts',
+files = ['app/api/guard/access/route.ts', 'lib/guardAccess.ts', 'lib/guardPhone.ts', 'lib/guardCors.ts', 'lib/guardSession.ts',
          'lib/guardOtp.ts', 'lib/guardSms.ts', 'lib/models/GuardAppProfile.ts']
 files += [f'app/api/guard/auth/{route}/route.ts' for route in
           ['check', 'send-otp', 'verify-otp', 'register', 'refresh', 'logout']]
