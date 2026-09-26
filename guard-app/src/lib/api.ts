@@ -562,7 +562,22 @@ export const api = {
       message?: string;
     }>(
       '/api/guard/auth/verify-otp',
-      { method: 'POST', body: { phone: e164(phone), otp, ...device } }
+      { method: 'POST', body: { phone: e164(phone),
+
+  checkStatus: (phone?: string, guardId?: string) =>
+    request<{
+      success: boolean;
+      exists: boolean;
+      isApproved?: boolean;
+      registrationStatus?: 'PENDING_APPROVAL' | 'DECLINED' | 'APPROVED';
+      guard?: any;
+      sessionToken?: string | null;
+      sessionExpiresAt?: number | null;
+      message?: string;
+    }>('/api/guard/auth/check', {
+      method: 'POST',
+      body: { phone: phone ? e164(phone) : undefined, guardId },
+    }), otp, ...device } }
     ),
 
   // ---- Agency link (uses existing approved-agency directory) ----

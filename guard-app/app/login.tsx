@@ -61,7 +61,7 @@ export default function Login() {
       const res = await api.verifyOtp(phone, code, device);
       if (res.registrationStatus === 'PENDING_APPROVAL') {
         // Guard submitted registration and is waiting for OPS approval
-        router.replace('/pending-approval');
+        router.replace(`/pending-approval?phone=${encodeURIComponent(e164(phone))}`);
         return;
       }
       if (res.registrationStatus === 'DECLINED') {
