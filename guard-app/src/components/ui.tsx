@@ -100,7 +100,17 @@ export function Field({ label, style, ...props }: { label?: string } & TextInput
 }
 
 /** A full-width status band: colour + icon + text (never colour alone — PRD 18.3). */
-export function StatusBand({ tone, icon, text }: { tone: 'off' | 'on' | 'warn' | 'danger'; icon?: React.ReactNode; text: string }) {
+export function StatusBand({
+  tone,
+  icon,
+  text,
+  onPress,
+}: {
+  tone: 'off' | 'on' | 'warn' | 'danger';
+  icon?: React.ReactNode;
+  text: string;
+  onPress?: () => void;
+}) {
   const map = {
     off: [colors.offDuty, '#4B5563'],
     on: [colors.onDuty, '#059669'],
@@ -108,12 +118,25 @@ export function StatusBand({ tone, icon, text }: { tone: 'off' | 'on' | 'warn' |
     danger: [colors.danger, '#DC2626'],
   } as const;
   const [a, b] = map[tone];
-  return (
+  const content = (
     <LinearGradient colors={[a, b]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.band}>
       {icon}
       <Text style={styles.bandText}>{text}</Text>
     </LinearGradient>
   );
+
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+        accessibilityRole="button"
+      >
+        {content}
+      </Pressable>
+    );
+  }
+  return content;
 }
 
 const styles = StyleSheet.create({

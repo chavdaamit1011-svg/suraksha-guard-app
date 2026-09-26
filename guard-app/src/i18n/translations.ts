@@ -19,6 +19,9 @@ export const en = {
     readAloud: 'Read aloud',
     callSupervisor: 'Call supervisor',
     loading: 'Please wait…',
+    decline: 'Decline',
+    reject: 'Reject',
+    accept: 'Accept',
   },
   lang: { title: 'Choose your language', listen: 'Listen' },
   login: {
@@ -721,6 +724,9 @@ export const hi: Dict = {
     readAloud: 'सुनें',
     callSupervisor: 'सुपरवाइज़र को कॉल करें',
     loading: 'कृपया प्रतीक्षा करें…',
+    decline: 'अस्वीकार करें',
+    reject: 'खारिज करें',
+    accept: 'स्वीकार करें',
   },
   lang: { title: 'अपनी भाषा चुनें', listen: 'सुनें' },
   login: {

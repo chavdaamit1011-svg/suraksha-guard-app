@@ -515,7 +515,18 @@ export default function DutyHome() {
         </View>
 
         {/* Status Band */}
-        <StatusBand tone={band.tone} icon={<Ionicons name={band.icon} size={20} color="#fff" />} text={band.text} />
+        <StatusBand
+          tone={band.tone}
+          icon={<Ionicons name={band.icon} size={20} color="#fff" />}
+          text={band.text}
+          onPress={
+            duty.state === 'check_in' || (booking && ['ASSIGNED', 'EN_ROUTE', 'ARRIVED'].includes(booking.bookingStatus))
+              ? () => router.push('/checkin?mode=in')
+              : duty.state === 'on_duty' || duty.state === 'check_out' || (booking && booking.bookingStatus === 'ACTIVE')
+              ? () => router.push('/checkin?mode=out')
+              : undefined
+          }
+        />
 
         <UpdateNotice />
 
@@ -1323,27 +1334,49 @@ function RequestDayLeaveModal({
 
 function BookingCard({ booking }: { booking: any }) {
   const t = useT();
+  const router = useRouter();
   const address = booking?.location?.address || booking?.location?.city || 'Assigned Location';
   const isActive = booking.bookingStatus === 'ACTIVE';
   const isPendingCheckin = ['ASSIGNED', 'EN_ROUTE', 'ARRIVED'].includes(booking.bookingStatus);
   const isCheckout = booking.bookingStatus === 'CHECKOUT_INITIATED';
 
   return (
-    <Card style={isActive ? { borderColor: colors.onDuty } : undefined}>
+    <Card style={isActive ? { borderColor: colors.onDuty, borderWidth: 1.5 } : { borderColor: colors.primary, borderWidth: 1.5 }}>
       <View style={styles.rowBetween}>
         <Muted>{booking.bookingId}</Muted>
-        <View style={styles.rowGap}>
-          <Text style={[styles.link, { color: isActive ? colors.onDuty : colors.primary }]}>
+        <View style={[styles.badgePill, { backgroundColor: isActive ? colors.onDutyDim : 'rgba(245,198,35,0.1)' }]}>
+          <Text style={[styles.badgePillText, { color: isActive ? colors.onDuty : colors.primary }]}>
             {isActive ? t('duty.onDuty') : isCheckout ? t('duty.checkOut') : t('duty.readyToCheckIn')}
           </Text>
         </View>
       </View>
-      <Body style={{ fontWeight: '800' }}>{booking.customerName || 'Client Booking'}</Body>
-      <Muted>{address}</Muted>
-      <View style={styles.metaRow}>
+      <Body style={{ fontWeight: '900', fontSize: 16, marginTop: 4 }}>{booking.customerName || 'Client Booking'}</Body>
+      <Muted style={{ marginTop: 2 }}>{address}</Muted>
+      <View style={[styles.metaRow, { marginTop: 6, marginBottom: 12 }]}>
         <Meta icon="briefcase" text={booking.serviceType || 'Security Service'} />
         {booking.schedule?.startTime ? (
-          <Meta icon="time" text={`${booking.schedule.startTime}${booking.schedule.endTime ? `–${booking.schedule.endTime}` : ''}`} />
+          <Meta icon="time" text={`${booking.schedule.startTime}${booking.schedule.endTime ? `–${booking.schedule.endTime}` : ''}`} tone={colors.text} />
+        ) : null}
+      </View>
+
+      {/* Action button for on-demand booking checkin/checkout */}
+      <View style={{ marginTop: space.xs }}>
+        {isPendingCheckin ? (
+          <Button
+            label={t('duty.checkIn') || 'CHECK IN'}
+            size="huge"
+            variant="success"
+            icon={<Ionicons name="log-in" size={26} color="#fff" />}
+            onPress={() => router.push('/checkin?mode=in')}
+          />
+        ) : isActive || isCheckout ? (
+          <Button
+            label={t('duty.checkOut') || 'CHECK OUT'}
+            size="huge"
+            variant="danger"
+            icon={<Ionicons name="log-out" size={24} color="#fff" />}
+            onPress={() => router.push('/checkin?mode=out')}
+          />
         ) : null}
       </View>
     </Card>
