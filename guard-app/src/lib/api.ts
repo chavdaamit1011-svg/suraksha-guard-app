@@ -216,6 +216,7 @@ export type DutyBundle = {
   /** Active accepted contract for this guard */
   activeContract?: ContractOffer | null;
   myContracts?: ContractOffer[];
+  completedContracts?: ContractOffer[];
   recentAttendance: any[];
   notifications: any[];
 };
@@ -234,6 +235,8 @@ export type ContractOffer = {
   totalDays?: number;
   currentDayNumber?: number;
   completedDaysCount?: number;
+  isCompleted?: boolean;
+  totalEarnings?: number;
   dailyBreakdown?: {
     date: string;
     status: 'Completed' | 'On Duty' | 'Scheduled' | 'Upcoming' | 'Missed' | string;
@@ -527,6 +530,7 @@ export type RosterShift = {
   checkedInAt: string | null;
   checkedOutAt: string | null;
   lateByMin: number;
+  payout?: number;
 };
 
 export const api = {
@@ -731,7 +735,16 @@ export const api = {
 
   /** 7-day roster (PRD 18.4 GAP-S-014). `from` defaults to yesterday. */
   roster: (guardId: string, opts: { from?: string; days?: number } = {}) =>
-    request<{ success: boolean; today: string; shifts: RosterShift[] }>('/api/guard/roster', {
+    request<{
+      success: boolean;
+      today: string;
+      shifts: RosterShift[];
+      completedContracts?: ContractOffer[];
+      activeContracts?: ContractOffer[];
+      completedOrdersCount?: number;
+      totalEarned?: number;
+      averageRating?: number;
+    }>('/api/guard/roster', {
       query: { guardId, from: opts.from, days: opts.days },
     }),
 

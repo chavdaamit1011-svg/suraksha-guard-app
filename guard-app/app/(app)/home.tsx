@@ -368,7 +368,16 @@ export default function DutyHome() {
     );
   }
 
-  const effectiveContract = activeContract || (myContracts && myContracts.length > 0 ? myContracts[0] : null);
+  const currentDateKey = selectedTestDate || (useDuty.getState().bundle?.todayKey) || new Date().toISOString().slice(0, 10);
+  const rawContract = activeContract || (myContracts && myContracts.length > 0 ? myContracts[0] : null);
+  const isContractFinished = rawContract
+    ? (
+        !!rawContract.isCompleted ||
+        (rawContract.completedDaysCount ?? 0) >= (rawContract.totalDays ?? 1) ||
+        (!!rawContract.endDate && currentDateKey > rawContract.endDate)
+      )
+    : false;
+  const effectiveContract = isContractFinished ? null : rawContract;
 
   return (
     <>
@@ -978,7 +987,7 @@ function MyContractsCard({
   onRequestDayLeave: () => void;
 }) {
   const totalDays = contract.totalDays || 30;
-  const completedDays = contract.completedDaysCount || Math.max(1, (contract.currentDayNumber || 1) - 1);
+  const completedDays = contract.completedDaysCount ?? 0;
   const pct = Math.min(100, Math.round((completedDays / totalDays) * 100));
 
   return (
