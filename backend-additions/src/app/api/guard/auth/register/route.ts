@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { connectToDatabase } from '@/lib/db';
 import { normPhone } from '@/lib/guardOtp';
+import { registrationDocuments } from '@/lib/guardRegistrationDocuments';
 
 /**
  * Guard self-registration (PRD 18.1 §2).
@@ -12,7 +13,7 @@ import { normPhone } from '@/lib/guardOtp';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { phone, name, city, address, agencyId, registerTicket, lat, lng, docAadhaar, docPan, docPhoto } = body;
+    const { phone, name, city, address, agencyId, registerTicket, lat, lng } = body;
 
     if (!phone || !name) {
       return NextResponse.json({ success: false, message: 'Phone and name are required.' }, { status: 400 });
@@ -21,6 +22,12 @@ export async function POST(req: Request) {
     const key = normPhone(phone);
     if (key.length !== 13) {
       return NextResponse.json({ success: false, message: 'A valid 10-digit phone is required.' }, { status: 400 });
+    }
+
+    let documents;
+    try { documents = registrationDocuments(body); }
+    catch (error: any) {
+      return NextResponse.json({ success: false, message: error.message }, { status: 400 });
     }
 
     await connectToDatabase();
@@ -63,11 +70,8 @@ export async function POST(req: Request) {
       status: 'Active',
       registrationStatus: 'PENDING_APPROVAL',
       initials: nameStr.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase(),
-      profilePhoto: docPhoto || '',
-      docAadhaar: docAadhaar || '',
-      docPan: docPan || '',
-      docPhoto: docPhoto || '',
-      selfieUrl: '',
+      profilePhoto: documents.selfieUrl,
+      ...documents,
       registrationNote: '',
       registeredAt: new Date(),
       isOnline: false,
