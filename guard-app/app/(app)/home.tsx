@@ -37,7 +37,10 @@ const TILES: Tile[] = [
 
 type Band = { tone: 'off' | 'on' | 'warn' | 'danger'; icon: keyof typeof Ionicons.glyphMap; text: string };
 
-function bandFor(state: DutyStateName, countdown: string, t: (k: string) => string): Band {
+function bandFor(state: DutyStateName, countdown: string, t: (k: string) => string, hasDuty = true): Band {
+  if (!hasDuty) {
+    return { tone: 'off', icon: 'moon', text: t('duty.noDutyToday') || 'No Scheduled Duty Today' };
+  }
   switch (state) {
     case 'on_duty':
     case 'check_out':
@@ -314,7 +317,8 @@ export default function DutyHome() {
   }, [duty.state, booking?.bookingStatus, current?.rosterId, hydrated]);
 
   const countdown = formatCountdown(duty.countdownSec);
-  const band = bandFor(duty.state, countdown, t);
+  const hasDutyToday = !!(current || (booking && booking.bookingStatus !== 'COMPLETED'));
+  const band = bandFor(duty.state, countdown, t, hasDutyToday);
   const isOffer = booking?.bookingStatus === 'PENDING_ACCEPTANCE';
 
   const alertText = (a: DutyAlert) => {
@@ -528,18 +532,20 @@ export default function DutyHome() {
         </View>
 
         {/* Status Band */}
-        <StatusBand
-          tone={band.tone}
-          icon={<Ionicons name={band.icon} size={20} color="#fff" />}
-          text={band.text}
-          onPress={
-            duty.state === 'check_in' || (booking && ['ASSIGNED', 'EN_ROUTE', 'ARRIVED'].includes(booking.bookingStatus))
-              ? () => router.push('/checkin?mode=in')
-              : duty.state === 'on_duty' || duty.state === 'check_out' || (booking && booking.bookingStatus === 'ACTIVE')
-              ? () => router.push('/checkin?mode=out')
-              : undefined
-          }
-        />
+        {hasDutyToday ? (
+          <StatusBand
+            tone={band.tone}
+            icon={<Ionicons name={band.icon} size={20} color="#fff" />}
+            text={band.text}
+            onPress={
+              duty.state === 'check_in' || (booking && ['ASSIGNED', 'EN_ROUTE', 'ARRIVED'].includes(booking.bookingStatus))
+                ? () => router.push('/checkin?mode=in')
+                : duty.state === 'on_duty' || duty.state === 'check_out' || (booking && booking.bookingStatus === 'ACTIVE')
+                ? () => router.push('/checkin?mode=out')
+                : undefined
+            }
+          />
+        ) : null}
 
         <UpdateNotice />
 
@@ -680,7 +686,9 @@ export default function DutyHome() {
         ) : null}
 
         {/* Timeline strip for active duty */}
-        {timeline.length > 0 ? <Timeline items={timeline} /> : null}
+        {current && (duty.state === 'on_duty' || duty.state === 'check_out' || (!!current.checkedInAt && !current.checkedOutAt)) && timeline.length > 0 ? (
+          <Timeline items={timeline} />
+        ) : null}
 
         {/* Quick grid */}
         <View style={styles.grid}>
