@@ -700,6 +700,15 @@ export const api = {
   notifications: (guardId: string) =>
     request<{ success: boolean; notifications: any[] }>('/api/guard/notifications', { query: { guardId } }),
 
+  getMe: (guardId: string) =>
+    request<{
+      success: boolean;
+      profile: any;
+      guard: any;
+      earnings: { totalEarnings: number; history: any[] };
+      reviews: { averageRating: number | null; totalReviews: number; items: any[] };
+    }>('/api/guard/me', { query: { guardId } }),
+
     leaveContract: (contractId: string, guardId: string, reason: string) =>
     request<{ success: boolean; message: string }>('/api/guard/contract/respond', {
       method: 'POST',

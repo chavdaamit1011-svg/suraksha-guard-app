@@ -798,22 +798,93 @@ function TodayDutyCard({
   const router = useRouter();
 
   if (isOffer) {
+    const schedDate = booking?.schedule?.date;
+    const startTime = booking?.schedule?.startTime;
+    const endTime = booking?.schedule?.endTime;
+    const timeDisplay = startTime ? `${startTime}${endTime ? ` – ${endTime}` : ''}` : null;
+    const eventType = booking?.serviceRequirements?.eventType;
+    const dressReq = booking?.serviceRequirements?.dressRequirement;
+    const specialInst = booking?.serviceRequirements?.specialInstructions;
+    const personnel = booking?.personnelCount ? `${booking.personnelCount} Guard${booking.personnelCount > 1 ? 's' : ''}` : null;
+
     return (
-      <Card style={{ borderColor: colors.warning, backgroundColor: '#1A1810' }}>
+      <Card style={{ borderColor: colors.warning, backgroundColor: '#1A1810', gap: 8 }}>
         <View style={styles.rowBetween}>
-          <H2>{t('duty.newRequest') || 'New Duty Request'}</H2>
-          <Ionicons name="notifications" size={22} color={colors.warning} />
+          <View style={styles.rowGap}>
+            <Ionicons name="notifications" size={20} color={colors.warning} />
+            <Text style={{ fontSize: 18, fontWeight: '900', color: colors.warning }}>
+              {t('duty.newRequest') || 'New Duty Request'}
+            </Text>
+          </View>
+          <View style={[styles.badgePill, { backgroundColor: 'rgba(245, 198, 35, 0.15)' }]}>
+            <Text style={[styles.badgePillText, { color: colors.primary }]}>
+              {booking?.serviceType || 'Security Service'}
+            </Text>
+          </View>
         </View>
-        <Body style={{ fontWeight: '700', fontSize: 16, marginTop: 4 }}>
-          {booking?.customerName ?? 'Client'} · {booking?.serviceType ?? 'Guarding'}
+
+        <Body style={{ fontWeight: '800', fontSize: 17 }}>
+          {booking?.customerName ?? 'Client'}
         </Body>
-        <Muted style={{ marginTop: 2, marginBottom: 12 }}>
+
+        <Muted style={{ marginTop: -2 }}>
           {booking?.location?.address ?? booking?.location?.city ?? 'Location not specified'}
         </Muted>
+
+        {/* Schedule & Requirements Box */}
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: radius.sm, padding: space.sm, gap: 6, marginVertical: 2 }}>
+          {schedDate || timeDisplay ? (
+            <View style={styles.rowBetween}>
+              <View style={styles.rowGap}>
+                <Ionicons name="calendar" size={15} color={colors.primary} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                  {schedDate || 'Today'}
+                </Text>
+              </View>
+              {timeDisplay ? (
+                <View style={styles.rowGap}>
+                  <Ionicons name="time" size={15} color={colors.textMuted} />
+                  <Text style={{ fontSize: 13, color: colors.text }}>{timeDisplay}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {(eventType || dressReq || personnel) ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+              {eventType ? (
+                <View style={styles.reqChip}>
+                  <Ionicons name="sparkles" size={12} color={colors.primary} />
+                  <Text style={styles.reqChipText}>{eventType}</Text>
+                </View>
+              ) : null}
+              {dressReq ? (
+                <View style={styles.reqChip}>
+                  <Ionicons name="shirt" size={12} color={colors.primary} />
+                  <Text style={styles.reqChipText}>{dressReq}</Text>
+                </View>
+              ) : null}
+              {personnel ? (
+                <View style={styles.reqChip}>
+                  <Ionicons name="people" size={12} color={colors.primary} />
+                  <Text style={styles.reqChipText}>{personnel}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {specialInst ? (
+            <View style={{ backgroundColor: 'rgba(245, 198, 35, 0.08)', borderRadius: 4, padding: 6, gap: 2, marginTop: 2 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Instructions:</Text>
+              <Text style={{ fontSize: 12, color: colors.text }}>{specialInst}</Text>
+            </View>
+          ) : null}
+        </View>
+
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
           <View style={{ flex: 1 }}>
             <Button
-              label={t('common.decline') || 'Decline'}
+              label={t('common.reject') || 'Reject'}
               variant="danger"
               onPress={() => onReject('Guard unavailable / declined')}
               loading={busy}
@@ -1390,28 +1461,99 @@ function BookingCard({ booking }: { booking: any }) {
   const isPendingCheckin = ['ASSIGNED', 'EN_ROUTE', 'ARRIVED'].includes(booking.bookingStatus);
   const isCheckout = booking.bookingStatus === 'CHECKOUT_INITIATED';
 
+  const todayKey = useDuty.getState().selectedTestDate || (useDuty.getState().bundle?.todayKey) || new Date().toISOString().slice(0, 10);
+  const schedDate = booking?.schedule?.date;
+  const isFuture = !!(schedDate && todayKey < schedDate);
+  const isToday = !schedDate || todayKey === schedDate;
+
+  const startTime = booking?.schedule?.startTime;
+  const endTime = booking?.schedule?.endTime;
+  const timeDisplay = startTime ? `${startTime}${endTime ? ` – ${endTime}` : ''}` : null;
+  const eventType = booking?.serviceRequirements?.eventType;
+  const dressReq = booking?.serviceRequirements?.dressRequirement;
+  const specialInst = booking?.serviceRequirements?.specialInstructions;
+  const personnel = booking?.personnelCount ? `${booking.personnelCount} Guard${booking.personnelCount > 1 ? 's' : ''}` : null;
+
   return (
-    <Card style={isActive ? { borderColor: colors.onDuty, borderWidth: 1.5 } : { borderColor: colors.primary, borderWidth: 1.5 }}>
+    <Card style={isActive ? { borderColor: colors.onDuty, borderWidth: 1.5, gap: 6 } : { borderColor: colors.primary, borderWidth: 1.5, gap: 6 }}>
       <View style={styles.rowBetween}>
         <Muted>{booking.bookingId}</Muted>
-        <View style={[styles.badgePill, { backgroundColor: isActive ? colors.onDutyDim : 'rgba(245,198,35,0.1)' }]}>
-          <Text style={[styles.badgePillText, { color: isActive ? colors.onDuty : colors.primary }]}>
-            {isActive ? t('duty.onDuty') : isCheckout ? t('duty.checkOut') : t('duty.readyToCheckIn')}
+        <View style={[styles.badgePill, { backgroundColor: isActive ? colors.onDutyDim : isFuture ? colors.warningDim : 'rgba(245,198,35,0.1)' }]}>
+          <Text style={[styles.badgePillText, { color: isActive ? colors.onDuty : isFuture ? colors.warning : colors.primary }]}>
+            {isActive ? (t('duty.onDuty') || 'On Duty') : isCheckout ? (t('duty.checkOut') || 'Check Out') : isFuture ? 'Upcoming Duty' : (t('duty.readyToCheckIn') || 'Ready to Check In')}
           </Text>
         </View>
       </View>
       <Body style={{ fontWeight: '900', fontSize: 16, marginTop: 4 }}>{booking.customerName || 'Client Booking'}</Body>
       <Muted style={{ marginTop: 2 }}>{address}</Muted>
-      <View style={[styles.metaRow, { marginTop: 6, marginBottom: 12 }]}>
-        <Meta icon="briefcase" text={booking.serviceType || 'Security Service'} />
-        {booking.schedule?.startTime ? (
-          <Meta icon="time" text={`${booking.schedule.startTime}${booking.schedule.endTime ? `–${booking.schedule.endTime}` : ''}`} tone={colors.text} />
+
+      {/* Schedule & Requirements Breakdown */}
+      <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: radius.sm, padding: space.sm, gap: 6, marginTop: 4, marginBottom: 4 }}>
+        <View style={styles.rowBetween}>
+          <View style={styles.rowGap}>
+            <Ionicons name="calendar" size={15} color={colors.primary} />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+              {schedDate || 'Today'}
+            </Text>
+          </View>
+          {timeDisplay ? (
+            <View style={styles.rowGap}>
+              <Ionicons name="time" size={15} color={colors.textMuted} />
+              <Text style={{ fontSize: 13, color: colors.text }}>{timeDisplay}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {(eventType || dressReq || personnel || booking.serviceType) ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+            {booking.serviceType ? (
+              <View style={styles.reqChip}>
+                <Ionicons name="briefcase" size={12} color={colors.primary} />
+                <Text style={styles.reqChipText}>{booking.serviceType}</Text>
+              </View>
+            ) : null}
+            {eventType ? (
+              <View style={styles.reqChip}>
+                <Ionicons name="sparkles" size={12} color={colors.primary} />
+                <Text style={styles.reqChipText}>{eventType}</Text>
+              </View>
+            ) : null}
+            {dressReq ? (
+              <View style={styles.reqChip}>
+                <Ionicons name="shirt" size={12} color={colors.primary} />
+                <Text style={styles.reqChipText}>{dressReq}</Text>
+              </View>
+            ) : null}
+            {personnel ? (
+              <View style={styles.reqChip}>
+                <Ionicons name="people" size={12} color={colors.primary} />
+                <Text style={styles.reqChipText}>{personnel}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {specialInst ? (
+          <View style={{ backgroundColor: 'rgba(245, 198, 35, 0.08)', borderRadius: 4, padding: 6, gap: 2, marginTop: 2 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Special Instructions:</Text>
+            <Text style={{ fontSize: 12, color: colors.text }}>{specialInst}</Text>
+          </View>
         ) : null}
       </View>
 
       {/* Action button for on-demand booking checkin/checkout */}
       <View style={{ marginTop: space.xs }}>
-        {isPendingCheckin ? (
+        {isPendingCheckin && isFuture ? (
+          <View style={{ backgroundColor: 'rgba(245,198,35,0.08)', borderColor: 'rgba(245,198,35,0.25)', borderWidth: 1, borderRadius: radius.sm, padding: space.md, gap: 4, alignItems: 'center' }}>
+            <Ionicons name="time-outline" size={24} color={colors.warning} />
+            <Text style={{ fontSize: 14, fontWeight: '800', color: colors.warning, textAlign: 'center' }}>
+              Duty starts on {schedDate} at {startTime || '09:00 AM'}
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center' }}>
+              Check-in will be enabled on the day of deployment.
+            </Text>
+          </View>
+        ) : isPendingCheckin && isToday ? (
           <Button
             label={t('duty.checkIn') || 'CHECK IN'}
             size="huge"
@@ -1929,4 +2071,20 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   tileLabel: { color: colors.text, fontSize: font.body - 1, fontWeight: '800', textAlign: 'center' },
+  reqChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(245, 198, 35, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 198, 35, 0.2)',
+    borderRadius: radius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  reqChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.text,
+  },
 });
