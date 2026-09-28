@@ -328,6 +328,19 @@ export default function DutyHome() {
   };
 
   const goOnline = async () => {
+    // If guard is attempting to go OFFLINE, block if they are on active duty or assigned booking
+    if (online) {
+      const onDuty = duty.state === 'on_duty' || duty.state === 'check_out' || (!!current?.checkedInAt && !current?.checkedOutAt);
+      const hasActiveBooking = booking && ['ASSIGNED', 'EN_ROUTE', 'ARRIVED', 'ACTIVE', 'CHECKOUT_INITIATED'].includes(booking.bookingStatus);
+      if (onDuty || hasActiveBooking) {
+        Alert.alert(
+          'Cannot Go Offline',
+          'You cannot go offline while you have an active duty or booking in progress. Please complete your duty first.'
+        );
+        return;
+      }
+    }
+
     setBusy(true);
     try {
       let coords: { lat: number; lng: number } | undefined;
@@ -337,6 +350,8 @@ export default function DutyHome() {
         if (pos) coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       }
       await setOnline(!online, coords);
+    } catch (err: any) {
+      Alert.alert('Status Error', err?.message || 'Could not update status');
     } finally {
       setBusy(false);
     }
