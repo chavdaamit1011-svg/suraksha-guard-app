@@ -266,20 +266,32 @@ export default function Roster() {
 
               return (
                 <Card key={c.contractId} style={styles.contractCard}>
-                  {/* Card Header */}
+                    {/* Card Header */}
                   <View style={styles.contractHeader}>
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Ionicons
-                          name={isQuit ? 'exit-outline' : 'shield-checkmark'}
+                          name={isQuit ? 'exit-outline' : c.isReliever ? 'swap-horizontal' : 'shield-checkmark'}
                           size={18}
-                          color={isQuit ? colors.danger : colors.primary}
+                          color={isQuit ? colors.danger : c.isReliever ? '#38bdf8' : colors.primary}
                         />
                         <Text style={styles.clientName} numberOfLines={1}>
                           {c.client}
                         </Text>
                       </View>
-                      <Text style={styles.contractCode}>{c.contractCode || `CNT-${c.contractId.slice(-4).toUpperCase()}`}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        <Text style={styles.contractCode}>{c.contractCode || `CNT-${c.contractId.slice(-4).toUpperCase()}`}</Text>
+                        {c.isReliever ? (
+                          <View style={{ backgroundColor: 'rgba(56,189,248,0.15)', borderColor: 'rgba(56,189,248,0.4)', borderWidth: 1, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 9, fontWeight: '900', color: '#38bdf8' }}>{totalDays}-DAY RELIEVER</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      {c.isReliever && c.relieverFor ? (
+                        <Text style={{ fontSize: 11, color: '#38bdf8', fontWeight: '700', marginTop: 2 }}>
+                          Covering for: {c.relieverFor}
+                        </Text>
+                      ) : null}
                     </View>
 
                     {isQuit ? (
@@ -313,7 +325,7 @@ export default function Roster() {
                     <View style={styles.progressLabels}>
                       <Text style={styles.progressLabel}>Contract Progress</Text>
                       <Text style={[styles.progressVal, isQuit && { color: colors.danger }]}>
-                        {completedDays}/{totalDays} Days ({pct}%){isQuit ? ' · Left Contract' : ''}
+                        {completedDays}/{totalDays} Days Worked{c.leaveDaysCount ? ` (${c.leaveDaysCount}d Leave)` : ''} ({pct}%){isQuit ? ' · Left Contract' : ''}
                       </Text>
                     </View>
                     <View style={styles.progressBarTrack}>
@@ -333,7 +345,7 @@ export default function Roster() {
                   <View style={[styles.earningsBox, isQuit && { backgroundColor: 'rgba(239, 68, 68, 0.08)', borderColor: 'rgba(239, 68, 68, 0.25)' }]}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.rateDetailText}>
-                        Rate: ₹{rate}/day ({completedDays} Days {isQuit ? 'Worked before Quit' : isCompleted ? 'Completed' : 'Worked'})
+                        Rate: ₹{rate}/day ({completedDays} Days {isQuit ? 'Worked before Quit' : isCompleted ? 'Worked' : 'Worked'})
                       </Text>
                       <Text style={[styles.totalEarningsText, isQuit && { color: colors.danger }]}>
                         Total Earned: ₹{earnings.toLocaleString('en-IN')}
@@ -371,7 +383,15 @@ export default function Roster() {
                         <View key={idx} style={styles.breakdownRow}>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.breakdownDate}>Day {idx + 1}: {item.date}</Text>
-                            {item.checkInTime || item.checkOutTime ? (
+                            {item.isLeave ? (
+                              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 1 }}>
+                                {item.relieverName ? `Reliever: ${item.relieverName}` : 'Approved Leave'}
+                              </Text>
+                            ) : item.isReliever ? (
+                              <Text style={{ fontSize: 11, color: '#38bdf8', marginTop: 1 }}>
+                                Covering for: {item.relieverFor || c.relieverFor || 'Assigned Officer'}
+                              </Text>
+                            ) : item.checkInTime || item.checkOutTime ? (
                               <Text style={styles.breakdownTime}>
                                 In: {item.checkInTime ? istTime(item.checkInTime) : '—'} | Out: {item.checkOutTime ? istTime(item.checkOutTime) : '—'}
                               </Text>
@@ -382,21 +402,25 @@ export default function Roster() {
                               styles.dayStatusBadge,
                               item.status === 'Quit'
                                 ? { backgroundColor: 'rgba(239, 68, 68, 0.12)' }
+                                : item.status === 'On Leave' || item.isLeave
+                                ? { backgroundColor: 'rgba(245, 158, 11, 0.12)' }
                                 : item.status === 'Completed'
                                 ? { backgroundColor: 'rgba(16, 185, 129, 0.12)' }
                                 : { backgroundColor: 'rgba(255, 255, 255, 0.08)' },
                             ]}
                           >
                             <Ionicons
-                              name={item.status === 'Quit' ? 'close-circle' : item.status === 'Completed' ? 'checkmark-circle' : 'time-outline'}
+                              name={item.status === 'Quit' ? 'close-circle' : item.status === 'On Leave' || item.isLeave ? 'pause-circle' : item.status === 'Completed' ? 'checkmark-circle' : 'time-outline'}
                               size={13}
-                              color={item.status === 'Quit' ? colors.danger : item.status === 'Completed' ? colors.onDuty : colors.textMuted}
+                              color={item.status === 'Quit' ? colors.danger : item.status === 'On Leave' || item.isLeave ? '#f59e0b' : item.status === 'Completed' ? colors.onDuty : colors.textMuted}
                             />
                             <Text
                               style={[
                                 styles.dayStatusText,
                                 item.status === 'Quit'
                                   ? { color: colors.danger }
+                                  : item.status === 'On Leave' || item.isLeave
+                                  ? { color: '#f59e0b' }
                                   : item.status === 'Completed'
                                   ? { color: colors.onDuty }
                                   : { color: colors.textMuted },

@@ -402,6 +402,16 @@ export default function DutyHome() {
     : false;
   const effectiveContract = isContractFinished ? null : rawContract;
 
+  const currentBundle = useDuty.getState().bundle;
+  const breakdownItemForDate = effectiveContract?.dailyBreakdown?.find((d) => d.date === currentDateKey);
+  const isDateLeave = !!currentBundle?.todayLeave?.isLeave || breakdownItemForDate?.status === 'On Leave' || breakdownItemForDate?.isLeave;
+  const leaveDetails = currentBundle?.todayLeave || (isDateLeave ? {
+    isLeave: true,
+    date: currentDateKey,
+    reason: breakdownItemForDate?.leaveReason || 'Approved Leave',
+    reliever: breakdownItemForDate?.relieverName ? { relieverName: breakdownItemForDate.relieverName } : null
+  } : null);
+
   return (
     <>
       <Screen>
@@ -547,7 +557,13 @@ export default function DutyHome() {
         </View>
 
         {/* Status Band */}
-        {hasDutyToday ? (
+        {isDateLeave ? (
+          <StatusBand
+            tone="warn"
+            icon={<Ionicons name="pause-circle" size={20} color="#fff" />}
+            text={`🏖️ On Approved Leave for ${currentDateKey}`}
+          />
+        ) : hasDutyToday ? (
           <StatusBand
             tone={band.tone}
             icon={<Ionicons name={band.icon} size={20} color="#fff" />}
@@ -759,6 +775,9 @@ export default function DutyHome() {
             setBusy(true);
             try {
               await applyDayLeave(date, reason);
+              alert('Leave request submitted successfully! Your agency supervisor will review and assign a reliever.');
+            } catch (err: any) {
+              alert(err?.message || 'Failed to submit leave request.');
             } finally {
               setBusy(false);
             }
@@ -1041,9 +1060,68 @@ function TodayDutyCard({
     );
   }
 
-  // If on-demand B2C booking
-  if (booking && booking.bookingStatus !== 'PENDING_ACCEPTANCE' && booking.bookingStatus !== 'COMPLETED') {
-    return <BookingCard booking={booking} />;
+  // If guard has approved leave for today / selected simulated date
+  const currentDayKey = useDuty.getState().selectedTestDate || (useDuty.getState().bundle?.todayKey) || new Date().toISOString().slice(0, 10);
+  const bundle = useDuty.getState().bundle;
+  const breakdownItemForDate = activeContract?.dailyBreakdown?.find((d) => d.date === currentDayKey);
+  const isDateLeave = !!bundle?.todayLeave?.isLeave || breakdownItemForDate?.status === 'On Leave' || breakdownItemForDate?.isLeave;
+  const leaveDetails = bundle?.todayLeave || (isDateLeave ? {
+    isLeave: true,
+    date: currentDayKey,
+    reason: breakdownItemForDate?.leaveReason || 'Approved Shift Leave',
+    reliever: breakdownItemForDate?.relieverName ? { relieverName: breakdownItemForDate.relieverName } : null
+  } : null);
+
+  if (isDateLeave && leaveDetails) {
+    return (
+      <Card style={{ borderColor: '#f59e0b', borderWidth: 1.5, backgroundColor: '#181408', paddingVertical: space.lg, gap: space.md }}>
+        <View style={styles.rowBetween}>
+          <View style={styles.rowGap}>
+            <Ionicons name="pause-circle" size={22} color="#f59e0b" />
+            <Text style={{ fontSize: 16, fontWeight: '900', color: '#f59e0b', textTransform: 'uppercase' }}>
+              On Approved Leave Today
+            </Text>
+          </View>
+          <View style={[styles.badgePill, { backgroundColor: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.3)', borderWidth: 1 }]}>
+            <Text style={[styles.badgePillText, { color: '#f59e0b' }]}>
+              {currentDayKey}
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ backgroundColor: 'rgba(245, 158, 11, 0.08)', borderColor: 'rgba(245, 158, 11, 0.25)', borderWidth: 1, borderRadius: radius.sm, padding: space.md, gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="checkmark-done-circle" size={18} color="#f59e0b" />
+            <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text, flex: 1 }}>
+              Shift Leave Approved by Agency
+            </Text>
+          </View>
+
+          {leaveDetails.reason ? (
+            <Text style={{ fontSize: 13, color: colors.textMuted }}>
+              Reason: <Text style={{ color: colors.text, fontWeight: '700' }}>"{leaveDetails.reason}"</Text>
+            </Text>
+          ) : null}
+
+          {leaveDetails.reliever?.relieverName ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, backgroundColor: 'rgba(139,92,246,0.14)', borderColor: 'rgba(139,92,246,0.3)', borderWidth: 1, padding: 8, borderRadius: 6 }}>
+              <Ionicons name="swap-horizontal" size={16} color="#a78bfa" />
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#ddd6fe', flex: 1 }}>
+                Reliever Assigned: {leaveDetails.reliever.relieverName}
+              </Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 12, color: '#10b981', fontWeight: '700', marginTop: 2 }}>
+              ✓ Shift duty exempt for this date. No check-in required.
+            </Text>
+          )}
+        </View>
+
+        <Muted style={{ textAlign: 'center', fontSize: 12 }}>
+          You have an approved leave for {currentDayKey}. You are not required to report for duty today.
+        </Muted>
+      </Card>
+    );
   }
 
   // Fallback: No scheduled duty today -> Marketplace Online/Offline toggle + Upcoming contract preview
@@ -1073,7 +1151,6 @@ function TodayDutyCard({
     }
   }
 
-  const bundle = useDuty.getState().bundle;
   const clientCancelled = (bundle as any)?.clientCancellationNotice;
   let clientCancelledNotice = null;
   if (clientCancelled) {
@@ -1136,23 +1213,46 @@ function MyContractsCard({
   onLeaveContract: () => void;
   onRequestDayLeave: () => void;
 }) {
-  const totalDays = contract.totalDays || 30;
-  const completedDays = contract.completedDaysCount ?? 0;
-  const pct = Math.min(100, Math.round((completedDays / totalDays) * 100));
+  const totalDays = contract.totalDays || (contract.isReliever ? 1 : 30);
+  const isDone = !!contract.isCompleted || (contract.completedDaysCount ?? 0) >= totalDays;
+  const completedDays = isDone ? totalDays : (contract.completedDaysCount ?? 0);
+  const pct = isDone ? 100 : Math.min(100, Math.round((completedDays / totalDays) * 100));
+  const rate = contract.ratePerGuard || 1000;
+  const earnings = contract.totalEarnings ?? (completedDays * rate);
 
   return (
-    <Card style={{ backgroundColor: '#13161A', borderColor: colors.border }}>
+    <Card style={{ backgroundColor: '#13161A', borderColor: isDone ? 'rgba(16,185,129,0.3)' : colors.border }}>
       <View style={styles.rowBetween}>
-        <View style={styles.rowGap}>
-          <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
-          <Text style={{ fontSize: 15, fontWeight: '900', color: colors.text }}>
+        <View style={[styles.rowGap, { flex: 1, marginRight: 8 }]}>
+          <Ionicons
+            name={contract.isReliever ? 'swap-horizontal' : 'shield-checkmark'}
+            size={16}
+            color={contract.isReliever ? '#38bdf8' : colors.primary}
+          />
+          <Text style={{ fontSize: 15, fontWeight: '900', color: colors.text }} numberOfLines={1}>
             {contract.client}
           </Text>
         </View>
-        <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary }}>
-          {contract.contractCode || 'ACTIVE'}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {contract.isReliever ? (
+            <View style={{ backgroundColor: 'rgba(56,189,248,0.15)', borderColor: 'rgba(56,189,248,0.4)', borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+              <Text style={{ fontSize: 10, fontWeight: '900', color: '#38bdf8' }}>1-DAY RELIEVER</Text>
+            </View>
+          ) : null}
+          <Text style={{ fontSize: 11, fontWeight: '800', color: isDone ? colors.onDuty : colors.primary }}>
+            {isDone ? 'COMPLETED' : (contract.contractCode || 'ACTIVE')}
+          </Text>
+        </View>
       </View>
+
+      {contract.isReliever && contract.relieverFor ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
+          <Ionicons name="person-outline" size={13} color="#38bdf8" />
+          <Text style={{ fontSize: 12, color: '#38bdf8', fontWeight: '700' }}>
+            Covering for {contract.relieverFor}
+          </Text>
+        </View>
+      ) : null}
 
       <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 4 }}>
         {contract.startDate} to {contract.endDate} · Shift: {contract.shiftTiming}
@@ -1164,15 +1264,30 @@ function MyContractsCard({
           <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textMuted }}>
             Progress
           </Text>
-          <Text style={{ fontSize: 12, fontWeight: '900', color: colors.primary }}>
-            {completedDays}/{totalDays} Days ({pct}%)
+          <Text style={{ fontSize: 12, fontWeight: '900', color: isDone ? colors.onDuty : colors.primary }}>
+            {completedDays}/{totalDays} Days Worked{contract.leaveDaysCount ? ` (${contract.leaveDaysCount}d Leave)` : ` (${pct}%)`}
           </Text>
         </View>
 
         <View style={styles.progressBarBackground}>
-          <View style={[styles.progressBarFill, { width: `${pct}%` }]} />
+          <View style={[styles.progressBarFill, { width: `${pct}%`, backgroundColor: isDone ? colors.onDuty : colors.primary }]} />
         </View>
       </View>
+
+      {/* Earnings & Status Summary */}
+      {isDone ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.25)', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginTop: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="checkmark-circle" size={16} color={colors.onDuty} />
+            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.onDuty }}>
+              {contract.isReliever ? 'Reliever Duty Completed' : 'Contract Completed'}
+            </Text>
+          </View>
+          <Text style={{ fontSize: 13, fontWeight: '900', color: colors.primary }}>
+            ₹{earnings.toLocaleString('en-IN')} Earned
+          </Text>
+        </View>
+      ) : null}
 
       {/* Quick Action Buttons */}
       <View style={{ flexDirection: 'row', gap: space.sm, marginTop: 12 }}>
@@ -1181,15 +1296,19 @@ function MyContractsCard({
           <Text style={[styles.actionBtnText, { color: colors.primary }]}>View History</Text>
         </Pressable>
 
-        <Pressable onPress={onRequestDayLeave} style={[styles.actionBtn, { flex: 1, backgroundColor: 'rgba(59,130,246,0.08)', borderColor: 'rgba(59,130,246,0.2)' }]}>
-          <Ionicons name="time-outline" size={15} color={colors.info} />
-          <Text style={[styles.actionBtnText, { color: colors.info }]}>1-Day Leave</Text>
-        </Pressable>
+        {!contract.isReliever && !isDone ? (
+          <>
+            <Pressable onPress={onRequestDayLeave} style={[styles.actionBtn, { flex: 1, backgroundColor: 'rgba(59,130,246,0.08)', borderColor: 'rgba(59,130,246,0.2)' }]}>
+              <Ionicons name="time-outline" size={15} color={colors.info} />
+              <Text style={[styles.actionBtnText, { color: colors.info }]}>1-Day Leave</Text>
+            </Pressable>
 
-        <Pressable onPress={onLeaveContract} style={[styles.actionBtn, { flex: 0.9, backgroundColor: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)' }]}>
-          <Ionicons name="exit-outline" size={15} color={colors.danger} />
-          <Text style={[styles.actionBtnText, { color: colors.danger }]}>Quit</Text>
-        </Pressable>
+            <Pressable onPress={onLeaveContract} style={[styles.actionBtn, { flex: 0.9, backgroundColor: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)' }]}>
+              <Ionicons name="exit-outline" size={15} color={colors.danger} />
+              <Text style={[styles.actionBtnText, { color: colors.danger }]}>Quit</Text>
+            </Pressable>
+          </>
+        ) : null}
       </View>
     </Card>
   );
@@ -1207,7 +1326,7 @@ function ContractHistoryModal({
   onClose: () => void;
   onRequestDayLeave: () => void;
 }) {
-  const totalDays = contract.totalDays || 30;
+  const totalDays = contract.totalDays || (contract.isReliever ? 1 : 30);
   const currentDay = contract.currentDayNumber || 1;
   const breakdown = contract.dailyBreakdown || [];
 
@@ -1233,22 +1352,38 @@ function ContractHistoryModal({
             {breakdown.length > 0 ? (
               breakdown.map((item, idx) => {
                 const dayIndex = idx + 1;
+                const isLeave = item.status === 'On Leave' || item.isLeave;
+                const isReliever = !!item.isReliever || !!contract.isReliever;
                 const isDone = item.status === 'Completed';
-                const isToday = dayIndex === currentDay || item.status === 'On Duty' || item.status === 'Scheduled';
+                const isToday = !isLeave && (dayIndex === currentDay || item.status === 'On Duty' || item.status === 'Scheduled');
 
                 return (
-                  <View key={item.date} style={styles.historyRow}>
+                  <View
+                    key={item.date}
+                    style={[
+                      styles.historyRow,
+                      isLeave ? { backgroundColor: 'rgba(245, 158, 11, 0.08)', borderColor: 'rgba(245, 158, 11, 0.25)', borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6 } : isReliever ? { backgroundColor: 'rgba(56, 189, 248, 0.08)', borderColor: 'rgba(56, 189, 248, 0.25)', borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6 } : null
+                    ]}
+                  >
                     <View style={styles.rowGap}>
                       <Ionicons
-                        name={isDone ? 'checkmark-circle' : isToday ? 'radio-button-on' : 'ellipse-outline'}
+                        name={isLeave ? 'pause-circle' : isReliever ? 'swap-horizontal' : isDone ? 'checkmark-circle' : isToday ? 'radio-button-on' : 'ellipse-outline'}
                         size={18}
-                        color={isDone ? colors.onDuty : isToday ? colors.primary : colors.textFaint}
+                        color={isLeave ? '#f59e0b' : isReliever ? '#38bdf8' : isDone ? colors.onDuty : isToday ? colors.primary : colors.textFaint}
                       />
                       <View>
-                        <Text style={{ fontSize: 13, fontWeight: isToday ? '800' : '600', color: isToday ? colors.text : colors.textMuted }}>
-                          Day {dayIndex} · {item.date}
+                        <Text style={{ fontSize: 13, fontWeight: isToday || isLeave || isReliever ? '800' : '600', color: isLeave ? '#f59e0b' : isReliever ? '#38bdf8' : isToday ? colors.text : colors.textMuted }}>
+                          Day {dayIndex} · {item.date} {isLeave ? '(On Leave)' : isReliever ? '(Reliever Shift)' : ''}
                         </Text>
-                        {item.checkInTime ? (
+                        {isLeave ? (
+                          <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                            {item.relieverName ? `Reliever assigned: ${item.relieverName}` : 'Approved leave'}
+                          </Text>
+                        ) : isReliever ? (
+                          <Text style={{ fontSize: 11, color: '#38bdf8' }}>
+                            Covering for: {item.relieverFor || contract.relieverFor || 'Assigned Guard'}
+                          </Text>
+                        ) : item.checkInTime ? (
                           <Text style={{ fontSize: 10, color: colors.textFaint }}>
                             {istTime(item.checkInTime)} {item.checkOutTime ? `→ ${istTime(item.checkOutTime)}` : ''}
                           </Text>
@@ -1260,10 +1395,10 @@ function ContractHistoryModal({
                       style={{
                         fontSize: 11,
                         fontWeight: '700',
-                        color: isDone ? colors.onDuty : isToday ? colors.primary : colors.textFaint,
+                        color: isLeave ? '#f59e0b' : isDone ? colors.onDuty : isToday ? colors.primary : colors.textFaint,
                       }}
                     >
-                      {item.status}
+                      {isLeave ? 'On Leave' : item.status}
                     </Text>
                   </View>
                 );
@@ -1428,63 +1563,245 @@ function RequestDayLeaveModal({
   const [reason, setReason] = useState('Medical appointment');
   const [loading, setLoading] = useState(false);
 
+  const initial = new Date(`${defaultDate}T12:00:00`);
+  const [viewYear, setViewYear] = useState(initial.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initial.getMonth());
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const days = getMonthDays(viewYear, viewMonth);
+  const realTodayIso = new Date().toISOString().slice(0, 10);
+
+  const prevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else {
+      setViewMonth((m) => m - 1);
+    }
+  };
+
+  const nextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  };
+
+  const setOffsetDate = (offsetDays: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    const iso = d.toISOString().slice(0, 10);
+    setDate(iso);
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+  };
+
+  const formattedSelectedDate = () => {
+    if (!date) return 'No date selected';
+    const d = new Date(`${date}T12:00:00`);
+    return d.toLocaleDateString('en-IN', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  const quickReasons = [
+    'Medical appointment',
+    'Family emergency',
+    'Personal reason',
+    'Out of town / Travel'
+  ];
+
   return (
-    <Modal visible animationType="fade" transparent>
+    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <View style={styles.rowGap}>
-              <Ionicons name="calendar" size={20} color={colors.primary} />
-              <Text style={styles.modalTitle}>Request Shift Leave</Text>
+        <View style={[styles.modalContent, { maxHeight: '92%' }]}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+            <View style={styles.modalHeader}>
+              <View style={styles.rowGap}>
+                <Ionicons name="calendar" size={20} color={colors.primary} />
+                <Text style={styles.modalTitle}>Request Shift Leave</Text>
+              </View>
+              <Pressable onPress={onClose} style={styles.modalCloseButton}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </Pressable>
             </View>
-            <Pressable onPress={onClose} style={styles.modalCloseButton}>
-              <Ionicons name="close" size={22} color={colors.text} />
-            </Pressable>
-          </View>
 
-          <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 12 }}>
-            Apply for leave on a specific day of this contract. Agency portal will arrange a reliever guard.
-          </Text>
+            <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 12 }}>
+              Select a date on the calendar for this contract leave. Agency will assign a reliever.
+            </Text>
 
-          <Text style={styles.inputLabel}>Leave Date (YYYY-MM-DD):</Text>
-          <TextInput
-            value={date}
-            onChangeText={setDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={colors.textFaint}
-            style={styles.textInput}
-          />
-
-          <Text style={[styles.inputLabel, { marginTop: 12 }]}>Reason for Leave:</Text>
-          <TextInput
-            value={reason}
-            onChangeText={setReason}
-            placeholder="Reason for taking leave"
-            placeholderTextColor={colors.textFaint}
-            style={styles.textInput}
-          />
-
-          <View style={{ flexDirection: 'row', gap: space.sm, marginTop: 16 }}>
-            <View style={{ flex: 1 }}>
-              <Button label="Cancel" variant="ghost" size="small" onPress={onClose} />
+            {/* Selected Date Highlight Card */}
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: 'rgba(245,198,35,0.1)',
+              borderColor: 'rgba(245,198,35,0.3)',
+              borderWidth: 1,
+              borderRadius: radius.md,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              marginBottom: 12
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="calendar" size={18} color={colors.primary} />
+                <View>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: colors.primary, textTransform: 'uppercase' }}>
+                    Selected Leave Date
+                  </Text>
+                  <Text style={{ fontSize: 14, fontWeight: '900', color: colors.text }}>
+                    {formattedSelectedDate()}
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary }}>
+                {date}
+              </Text>
             </View>
-            <View style={{ flex: 1.3 }}>
-              <Button
-                label="Submit Request"
-                variant="primary"
-                size="small"
-                loading={loading}
-                onPress={async () => {
-                  setLoading(true);
-                  try {
-                    await onConfirm(date, reason);
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-              />
+
+            {/* Quick Date Presets */}
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6 }}>
+                Quick Date Presets:
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                <Pressable
+                  onPress={() => setOffsetDate(1)}
+                  style={[styles.quickPresetChip, date === new Date(Date.now() + 86400000).toISOString().slice(0, 10) && { borderColor: colors.primary, backgroundColor: 'rgba(245,198,35,0.15)' }]}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text }}>Tomorrow</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setOffsetDate(2)}
+                  style={[styles.quickPresetChip, date === new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10) && { borderColor: colors.primary, backgroundColor: 'rgba(245,198,35,0.15)' }]}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text }}>+2 Days</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setOffsetDate(3)}
+                  style={[styles.quickPresetChip, date === new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10) && { borderColor: colors.primary, backgroundColor: 'rgba(245,198,35,0.15)' }]}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text }}>+3 Days</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setOffsetDate(7)}
+                  style={[styles.quickPresetChip, date === new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) && { borderColor: colors.primary, backgroundColor: 'rgba(245,198,35,0.15)' }]}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text }}>+7 Days</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
+
+            {/* Month Navigation */}
+            <View style={styles.monthNavRow}>
+              <Pressable onPress={prevMonth} style={styles.navArrowBtn}>
+                <Ionicons name="chevron-back" size={20} color={colors.text} />
+              </Pressable>
+              <Text style={styles.monthNavTitle}>
+                {monthNames[viewMonth]} {viewYear}
+              </Text>
+              <Pressable onPress={nextMonth} style={styles.navArrowBtn}>
+                <Ionicons name="chevron-forward" size={20} color={colors.text} />
+              </Pressable>
+            </View>
+
+            {/* Weekday Row */}
+            <View style={styles.weekdayRow}>
+              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((w) => (
+                <Text key={w} style={styles.weekdayText}>{w}</Text>
+              ))}
+            </View>
+
+            {/* Days Grid */}
+            <View style={styles.daysGrid}>
+              {days.map((item, index) => {
+                const isSelected = date === item.ds;
+                const isRealToday = realTodayIso === item.ds;
+                const isDimmed = item.offset !== 0;
+
+                return (
+                  <Pressable
+                    key={item.ds + index}
+                    onPress={() => setDate(item.ds)}
+                    style={[
+                      styles.dayCell,
+                      isSelected ? styles.dayCellSelected : null,
+                      isRealToday && !isSelected ? styles.dayCellToday : null,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.dayCellText,
+                        isDimmed ? styles.dayCellTextDimmed : null,
+                        isSelected ? styles.dayCellTextSelected : null,
+                        isRealToday && !isSelected ? styles.dayCellTextToday : null,
+                      ]}
+                    >
+                      {item.day}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Reason Selection */}
+            <Text style={[styles.inputLabel, { marginTop: 14 }]}>Reason for Leave:</Text>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+              {quickReasons.map((r) => (
+                <Pressable
+                  key={r}
+                  onPress={() => setReason(r)}
+                  style={[
+                    styles.quickPresetChip,
+                    reason === r && { borderColor: colors.primary, backgroundColor: 'rgba(245,198,35,0.15)' }
+                  ]}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: reason === r ? colors.primary : colors.textMuted }}>
+                    {r}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <TextInput
+              value={reason}
+              onChangeText={setReason}
+              placeholder="Or type custom reason..."
+              placeholderTextColor={colors.textFaint}
+              style={styles.textInput}
+            />
+
+            <View style={{ flexDirection: 'row', gap: space.sm, marginTop: 18 }}>
+              <View style={{ flex: 1 }}>
+                <Button label="Cancel" variant="ghost" size="small" onPress={onClose} />
+              </View>
+              <View style={{ flex: 1.3 }}>
+                <Button
+                  label="Submit Request"
+                  variant="primary"
+                  size="small"
+                  loading={loading}
+                  onPress={async () => {
+                    setLoading(true);
+                    try {
+                      await onConfirm(date, reason);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                />
+              </View>
+            </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -1833,32 +2150,44 @@ function ContractOfferCard({
   onAccept: () => Promise<void>;
   onReject: () => Promise<void>;
 }) {
+  const isReliever = !!offer.isReliever;
+
   return (
-    <Card style={{ borderColor: colors.primary, borderWidth: 1.5, backgroundColor: 'rgba(245,198,35,0.04)' }}>
+    <Card style={{ borderColor: isReliever ? '#8b5cf6' : colors.primary, borderWidth: 1.5, backgroundColor: isReliever ? 'rgba(139,92,246,0.06)' : 'rgba(245,198,35,0.04)' }}>
       <View style={styles.rowBetween}>
         <View style={styles.rowGap}>
-          <Ionicons name="document-text" size={16} color={colors.primary} />
-          <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary, textTransform: 'uppercase' }}>
-            New Contract Assignment
+          <Ionicons name={isReliever ? 'swap-horizontal' : 'document-text'} size={16} color={isReliever ? '#a78bfa' : colors.primary} />
+          <Text style={{ fontSize: 12, fontWeight: '800', color: isReliever ? '#c084fc' : colors.primary, textTransform: 'uppercase' }}>
+            {isReliever ? '1-Day Reliever Shift Request' : 'New Contract Assignment'}
           </Text>
         </View>
-        <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning, backgroundColor: colors.warningDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-          Action Required
+        <Text style={{ fontSize: 10, fontWeight: '700', color: isReliever ? '#e9d5ff' : colors.warning, backgroundColor: isReliever ? 'rgba(139,92,246,0.3)' : colors.warningDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+          {isReliever ? '1-Day Shift' : 'Action Required'}
         </Text>
       </View>
 
       <Body style={{ fontWeight: '800', marginTop: 4 }}>
-        {(offer.client || offer.title || 'Security Contract')} {offer.site && offer.site !== 'All Sites' ? '· ' + offer.site : ''}
+        {(offer.client || offer.title || 'Security Duty')} {offer.site && offer.site !== 'All Sites' ? '· ' + offer.site : ''}
       </Body>
 
+      {isReliever && offer.relieverFor ? (
+        <View style={{ backgroundColor: 'rgba(139,92,246,0.14)', borderColor: 'rgba(139,92,246,0.3)', borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5, marginTop: 4 }}>
+          <Text style={{ fontSize: 12, fontWeight: '800', color: '#e9d5ff' }}>
+            🔄 Reliever Duty: Covering for {offer.relieverFor} for 1 day
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.metaRow}>
-        <Meta icon="calendar" text={`${offer.startDate} to ${offer.endDate}`} />
+        <Meta icon="calendar" text={isReliever ? `Duty Date: ${offer.startDate}` : `${offer.startDate} to ${offer.endDate}`} />
         <Meta icon="time" text={`Shift: ${offer.shiftTiming}`} />
-        {offer.shiftHours ? <Meta icon="hourglass-outline" text={`${offer.shiftHours} hrs/day`} /> : null}
+        {offer.ratePerGuard ? <Meta icon="cash-outline" text={`₹${offer.ratePerGuard}${isReliever ? ' for 1 day' : '/day'}`} /> : null}
       </View>
 
       <Muted style={{ fontSize: 11, marginTop: 2 }}>
-        Accepting this deploys you to this contract for daily scheduled shifts.
+        {isReliever
+          ? `Accepting this assigns you as the reliever on ${offer.startDate} for this site.`
+          : 'Accepting this deploys you to this contract for daily scheduled shifts.'}
       </Muted>
 
       <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
@@ -1871,9 +2200,9 @@ function ContractOfferCard({
             onPress={onReject}
           />
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1.3 }}>
           <Button
-            label="Accept Contract"
+            label={isReliever ? 'Accept 1-Day Duty' : 'Accept Contract'}
             variant="primary"
             size="small"
             disabled={busy}

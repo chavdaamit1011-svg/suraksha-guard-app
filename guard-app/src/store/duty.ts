@@ -330,14 +330,21 @@ export const useDuty = create<DutyStore>((set, get) => ({
   },
 
   applyDayLeave: async (date: string, reason: string) => {
-    const id = gid(useAuth.getState().guard);
+    const g = useAuth.getState().guard;
+    const id = gid(g);
     if (!id) return;
+    const currentContract = get().activeContract || get().myContracts?.[0];
     await api.requestDayLeave({
       guardId: id,
       type: 'casual',
       fromDate: date,
       toDate: date,
       reason,
+      guardName: g?.name || '',
+      guardPhone: g?.phone || '',
+      contractId: currentContract?.contractId,
+      contractTitle: currentContract?.title,
+      siteName: currentContract?.site || (currentContract as any)?.siteName,
     });
     await get().refresh();
   },

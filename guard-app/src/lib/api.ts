@@ -217,6 +217,20 @@ export type DutyBundle = {
   activeContract?: ContractOffer | null;
   myContracts?: ContractOffer[];
   completedContracts?: ContractOffer[];
+  todayLeave?: {
+    isLeave: boolean;
+    date: string;
+    fromDate?: string;
+    toDate?: string;
+    reason?: string;
+    leaveType?: string;
+    reliever?: {
+      relieverName?: string;
+      relieverPhone?: string;
+      siteName?: string;
+      contractTitle?: string;
+    } | null;
+  } | null;
   recentAttendance: any[];
   notifications: any[];
 };
@@ -235,15 +249,24 @@ export type ContractOffer = {
   totalDays?: number;
   currentDayNumber?: number;
   completedDaysCount?: number;
+  leaveDaysCount?: number;
   isCompleted?: boolean;
   isQuit?: boolean;
+  isReliever?: boolean;
+  relieverDate?: string;
+  relieverFor?: string;
   guardStatus?: 'Accepted' | 'Quit' | 'Completed' | 'Pending' | 'Rejected' | string;
   quitReason?: string;
   quitAt?: string | null;
   totalEarnings?: number;
   dailyBreakdown?: {
     date: string;
-    status: 'Completed' | 'On Duty' | 'Scheduled' | 'Upcoming' | 'Missed' | string;
+    status: 'Completed' | 'On Duty' | 'Scheduled' | 'Upcoming' | 'Missed' | 'On Leave' | string;
+    isLeave?: boolean;
+    isReliever?: boolean;
+    relieverName?: string | null;
+    relieverFor?: string | null;
+    leaveReason?: string | null;
     checkInTime?: string | null;
     checkOutTime?: string | null;
   }[];
@@ -718,7 +741,18 @@ export const api = {
       body: { contractId, guardId, action: 'leave', reason },
     }),
 
-  requestDayLeave: (payload: { guardId: string; type: string; fromDate: string; toDate: string; reason: string }) =>
+  requestDayLeave: (payload: {
+    guardId: string;
+    type: string;
+    fromDate: string;
+    toDate: string;
+    reason: string;
+    guardName?: string;
+    guardPhone?: string;
+    contractId?: string;
+    contractTitle?: string;
+    siteName?: string;
+  }) =>
     request<{ success: boolean; message: string }>('/api/guard/leave', {
       method: 'POST',
       body: payload,
