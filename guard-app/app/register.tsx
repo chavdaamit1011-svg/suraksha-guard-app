@@ -25,6 +25,7 @@ export default function Register() {
   const [coords, setCoords] = useState<{ lat?: number; lng?: number }>({});
   const [fromGps, setFromGps] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
   // Document upload state
@@ -99,7 +100,7 @@ export default function Register() {
     return () => { cancelled = true; };
   }, []);
 
-  const pickDocument = async (setter: (uri: string) => void) => {
+  const pickDocument = async (setter: (uri: string) => void, fieldKey?: string) => {
     if (picking || loading) return;
     setPicking(true);
     setError('');
@@ -112,17 +113,30 @@ export default function Register() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'], quality: 0.7, allowsEditing: false,
       });
-      if (!result.canceled && result.assets?.[0]?.uri) setter(await imageData(result.assets[0].uri));
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setter(await imageData(result.assets[0].uri));
+        if (fieldKey) setFieldErrors(prev => ({ ...prev, [fieldKey]: '' }));
+      }
     } catch (e: any) { setError(e.message || 'Could not select document. Please try again.'); }
     finally { setPicking(false); }
   };
 
   const submit = async () => {
     if (loading || picking) return;
-    if (!name.trim() || !city.trim()) return setError('Name and city are required.');
-    if (!/^[2-9]\d{11}$/.test(aadhaarNumber)) return setError('Enter a valid 12-digit Aadhaar number.');
-    if (!docAadhaar) return setError('Please upload your Aadhaar card.');
-    if (!docPhoto) return setError('Please take a live selfie.');
+    const errors: Record<string, string> = {};
+    if (!name.trim()) errors.name = 'Full name is required.';
+    if (!city.trim()) errors.city = 'City is required.';
+    if (!/^[2-9]\d{11}$/.test(aadhaarNumber)) errors.aadhaarNumber = 'Enter a valid 12-digit Aadhaar number.';
+    if (!docAadhaar) errors.docAadhaar = 'Please upload your Aadhaar card photo.';
+    if (!docPhoto) errors.docPhoto = 'Please take a live selfie.';
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setError(Object.values(errors)[0]);
+      return;
+    }
+
+    setFieldErrors({});
     setError('');
     setLoading(true);
     try {
@@ -165,44 +179,99 @@ export default function Register() {
           <Muted>+91 {String(phone ?? '').replace('+91', '')}</Muted>
         </View>
 
-        {error ? (
-          <Card style={{ backgroundColor: colors.dangerDim, borderColor: 'rgba(239,68,68,0.3)' }}>
-            <Text style={{ color: colors.danger, fontWeight: '700' }}>{error}</Text>
-          </Card>
-        ) : null}
-
         <View style={{ gap: space.lg }}>
-          <Field label={t('register.name')} value={name} onChangeText={setName} placeholder="—" autoFocus />
-          <Field label={t('register.city')} value={city} onChangeText={setCity} placeholder="—" />
-          <Field label={t('register.address')} value={address} onChangeText={setAddress} placeholder="—" multiline />
+          <View style={{ gap: 4 }}>
+            <Field
+              label={t('register.name')}
+              value={name}
+              onChangeText={(val) => {
+                setName(val);
+                if (fieldErrors.name) setFieldErrors(prev => ({ ...prev, name: '' }));
+              }}
+              placeholder="Full name"
+              autoFocus
+              style={fieldErrors.name ? { borderColor: colors.danger } : undefined}
+            />
+            {fieldErrors.name ? (
+              <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '700' }}>{fieldErrors.name}</Text>
+            ) : null}
+          </View>
+
+          <View style={{ gap: 4 }}>
+            <Field
+              label={t('register.city')}
+              value={city}
+              onChangeText={(val) => {
+                setCity(val);
+                if (fieldErrors.city) setFieldErrors(prev => ({ ...prev, city: '' }));
+              }}
+              placeholder="City"
+              style={fieldErrors.city ? { borderColor: colors.danger } : undefined}
+            />
+            {fieldErrors.city ? (
+              <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '700' }}>{fieldErrors.city}</Text>
+            ) : null}
+          </View>
+
+          <Field label={t('register.address')} value={address} onChangeText={setAddress} placeholder="Address" multiline />
           {fromGps ? <Muted>{t('register.fromGps')}</Muted> : null}
 
           {/* Document Uploads */}
           <Text style={styles.sectionLabel}>DOCUMENTS</Text>
-          <Field label="Aadhaar number *" value={aadhaarNumber} onChangeText={value => setAadhaarNumber(value.replace(/\D/g, '').slice(0, 12))}
-            placeholder="12-digit Aadhaar number" keyboardType="number-pad" maxLength={12} />
+
+          <View style={{ gap: 4 }}>
+            <Field
+              label="Aadhaar number *"
+              value={aadhaarNumber}
+              onChangeText={value => {
+                setAadhaarNumber(value.replace(/\D/g, '').slice(0, 12));
+                if (fieldErrors.aadhaarNumber) setFieldErrors(prev => ({ ...prev, aadhaarNumber: '' }));
+              }}
+              placeholder="12-digit Aadhaar number"
+              keyboardType="number-pad"
+              maxLength={12}
+              style={fieldErrors.aadhaarNumber ? { borderColor: colors.danger } : undefined}
+            />
+            {fieldErrors.aadhaarNumber ? (
+              <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '700' }}>{fieldErrors.aadhaarNumber}</Text>
+            ) : null}
+          </View>
 
           <DocUploadRow
             label="Aadhaar Card *"
             uri={docAadhaar}
             onPress={() => openCamera('aadhaar')}
             camera
+            error={fieldErrors.docAadhaar}
             disabled={loading || picking}
           />
-          <Button label="Choose Aadhaar image from gallery" variant="ghost" size="small" onPress={() => pickDocument(setDocAadhaar)} disabled={loading || picking} />
+          <Button label="Choose Aadhaar image from gallery" variant="ghost" size="small" onPress={() => pickDocument(setDocAadhaar, 'docAadhaar')} disabled={loading || picking} />
+
           <DocUploadRow
             label="PAN Card (optional)"
             uri={docPan}
             onPress={() => pickDocument(setDocPan)}
             disabled={loading || picking}
           />
+
           <DocUploadRow
             label="Live selfie *"
             uri={docPhoto}
             onPress={() => openCamera('selfie')}
             camera
+            error={fieldErrors.docPhoto}
             disabled={loading || picking}
           />
+
+          {/* Bottom Error Box right above the Submit button */}
+          {error ? (
+            <Card style={{ backgroundColor: colors.dangerDim, borderColor: 'rgba(239,68,68,0.4)', borderWidth: 1, padding: space.md, gap: 6, marginVertical: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="alert-circle" size={20} color={colors.danger} />
+                <Text style={{ color: colors.danger, fontWeight: '800', fontSize: 13, flex: 1 }}>{error}</Text>
+              </View>
+            </Card>
+          ) : null}
 
           <Button label={t('register.submit')} onPress={submit} loading={loading} disabled={picking} />
         </View>
@@ -215,7 +284,13 @@ export default function Register() {
             <>
               <Image source={{ uri: preview }} style={styles.cameraPreview} resizeMode="contain" />
               <Button label="Use this photo" onPress={() => {
-                (cameraFor === 'selfie' ? setDocPhoto : setDocAadhaar)(preview);
+                if (cameraFor === 'selfie') {
+                  setDocPhoto(preview);
+                  setFieldErrors(prev => ({ ...prev, docPhoto: '' }));
+                } else {
+                  setDocAadhaar(preview);
+                  setFieldErrors(prev => ({ ...prev, docAadhaar: '' }));
+                }
                 setCameraFor(null);
                 setPreview(null);
               }} />
@@ -245,22 +320,43 @@ export default function Register() {
   );
 }
 
-function DocUploadRow({ label, uri, onPress, camera, disabled }: { label: string; uri: string | null; onPress: () => void; camera?: boolean; disabled?: boolean }) {
+function DocUploadRow({ label, uri, onPress, camera, disabled, error }: { label: string; uri: string | null; onPress: () => void; camera?: boolean; disabled?: boolean; error?: string }) {
   return (
-    <TouchableOpacity style={styles.docRow} onPress={onPress} activeOpacity={0.75} disabled={disabled} accessibilityRole="button" accessibilityLabel={label}>
-      <View style={styles.docLeft}>
-        <View style={styles.docIcon}>
-          <Ionicons name={uri ? 'checkmark-circle' : camera ? 'camera-outline' : 'cloud-upload-outline'} size={22} color={uri ? colors.primary : colors.textFaint} />
+    <View style={{ gap: 4 }}>
+      <TouchableOpacity
+        style={[
+          styles.docRow,
+          error ? { borderColor: colors.danger, backgroundColor: 'rgba(239,68,68,0.08)' } : null
+        ]}
+        onPress={onPress}
+        activeOpacity={0.75}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+      >
+        <View style={styles.docLeft}>
+          <View style={[styles.docIcon, error ? { backgroundColor: 'rgba(239,68,68,0.15)' } : null]}>
+            <Ionicons
+              name={uri ? 'checkmark-circle' : camera ? 'camera-outline' : 'cloud-upload-outline'}
+              size={22}
+              color={error ? colors.danger : uri ? colors.primary : colors.textFaint}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.docLabel, error ? { color: colors.danger } : null]}>{label}</Text>
+            <Text style={styles.docSub}>{uri ? 'Photo ready · Tap to replace' : camera ? 'Tap to open camera' : 'Tap to select image'}</Text>
+          </View>
         </View>
-        <View>
-          <Text style={styles.docLabel}>{label}</Text>
-          <Text style={styles.docSub}>{uri ? 'Photo ready · Tap to replace' : camera ? 'Tap to open camera' : 'Tap to select image'}</Text>
-        </View>
-      </View>
-      {uri ? (
-        <Image source={{ uri }} style={styles.docThumb} resizeMode="cover" />
+        {uri ? (
+          <Image source={{ uri }} style={styles.docThumb} resizeMode="cover" />
+        ) : null}
+      </TouchableOpacity>
+      {error ? (
+        <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '700', paddingLeft: 4 }}>
+          {error}
+        </Text>
       ) : null}
-    </TouchableOpacity>
+    </View>
   );
 }
 
