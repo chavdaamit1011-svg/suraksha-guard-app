@@ -270,6 +270,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
     set({ online: v });
     try {
       await api.toggleOnline(id, v, coords);
+      await get().refresh();
     } catch (e: any) {
       set({ lastError: e?.message ?? 'Could not update status' });
     }
