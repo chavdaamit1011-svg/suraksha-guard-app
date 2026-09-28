@@ -372,7 +372,11 @@ export default function DutyHome() {
   const rawContract = activeContract || (myContracts && myContracts.length > 0 ? myContracts[0] : null);
   const isContractFinished = rawContract
     ? (
+        !!rawContract.isQuit ||
+        rawContract.guardStatus === 'Quit' ||
+        rawContract.guardStatus === 'Rejected' ||
         !!rawContract.isCompleted ||
+        rawContract.guardStatus === 'Completed' ||
         (rawContract.completedDaysCount ?? 0) >= (rawContract.totalDays ?? 1) ||
         (!!rawContract.endDate && currentDateKey > rawContract.endDate)
       )
@@ -862,10 +866,10 @@ function TodayDutyCard({
         {isCompleted ? (
           <View style={styles.shiftCompletedBox}>
             <View style={styles.rowGap}>
-              <Ionicons name="checkmark-circle" size={24} color={colors.onDuty} />
+              <Ionicons name={dayNum >= totalDays ? 'trophy' : 'checkmark-circle'} size={24} color={colors.onDuty} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 15, fontWeight: '900', color: colors.onDuty }}>
-                  ✓ Today's Duty Completed
+                  {dayNum >= totalDays ? '🎉 All Contract Shifts Completed!' : "✓ Today's Duty Completed"}
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>
                   {current.checkedInAt ? istTime(current.checkedInAt) : current.start} → {current.checkedOutAt ? istTime(current.checkedOutAt) : current.end}
@@ -878,7 +882,7 @@ function TodayDutyCard({
                 Day {dayNum} / {totalDays} — Completed
               </Text>
               <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '700' }}>
-                Next Shift: Tomorrow
+                {dayNum >= totalDays ? 'Total Days Reached' : 'Next Shift: Tomorrow'}
               </Text>
             </View>
           </View>
@@ -948,7 +952,33 @@ function TodayDutyCard({
     return <BookingCard booking={booking} />;
   }
 
-  // Fallback: No scheduled duty today -> Marketplace Online/Offline toggle
+  // Fallback: No scheduled duty today -> Marketplace Online/Offline toggle + Upcoming contract preview
+  const isFutureContract = activeContract && activeContract.startDate;
+  let upcomingContractNotice = null;
+  if (isFutureContract) {
+    const todayStr = useDuty.getState().selectedTestDate || (useDuty.getState().bundle?.todayKey) || new Date().toISOString().slice(0, 10);
+    const sDate = activeContract.startDate;
+    if (sDate > todayStr) {
+      const diffDays = Math.round((Date.parse(sDate) - Date.parse(todayStr)) / 86_400_000);
+      const label = diffDays === 1
+        ? `Your contract shift starts tomorrow (${sDate}) at ${activeContract.shiftTiming}`
+        : `Your contract shift starts in ${diffDays} days (${sDate}) at ${activeContract.shiftTiming}`;
+      upcomingContractNotice = (
+        <View style={{ width: '100%', backgroundColor: 'rgba(245, 198, 35, 0.08)', borderColor: 'rgba(245, 198, 35, 0.25)', borderWidth: 1, borderRadius: radius.sm, padding: space.md, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="calendar" size={18} color={colors.primary} />
+            <Text style={{ fontSize: 13, fontWeight: '800', color: colors.primary, flex: 1 }}>
+              {label}
+            </Text>
+          </View>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>
+            {activeContract.client} · {activeContract.site} · {activeContract.shiftTiming}
+          </Text>
+        </View>
+      );
+    }
+  }
+
   return (
     <Card style={{ alignItems: 'center', paddingVertical: space.xl, gap: space.md }}>
       <Ionicons name="moon-outline" size={36} color={colors.textFaint} />
@@ -960,6 +990,9 @@ function TodayDutyCard({
           Go online to receive on-demand security requests in your area.
         </Muted>
       </View>
+
+      {upcomingContractNotice}
+
       <Button
         label={online ? t('duty.goOffline') || 'Go Offline' : t('duty.goOnline') || 'Go Online'}
         size="huge"

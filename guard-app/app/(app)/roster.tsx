@@ -29,7 +29,9 @@ export default function Roster() {
 
   const [shifts, setShifts] = useState<RosterShift[]>([]);
   const [completedContracts, setCompletedContracts] = useState<ContractOffer[]>([]);
+  const [quitContracts, setQuitContracts] = useState<ContractOffer[]>([]);
   const [activeContracts, setActiveContracts] = useState<ContractOffer[]>([]);
+  const [allContracts, setAllContracts] = useState<ContractOffer[]>([]);
   const [totalEarned, setTotalEarned] = useState<number>(0);
   const [today, setToday] = useState('');
   const [loading, setLoading] = useState(true);
@@ -43,21 +45,30 @@ export default function Roster() {
     if (!id) return;
     try {
       const res = await api.roster(id, { days: 14 });
+      const completed = res.completedContracts ?? [];
+      const quit = res.quitContracts ?? [];
+      const active = res.activeContracts ?? [];
+      const all = res.allContracts ?? [...completed, ...quit, ...active];
+
       setShifts(res.shifts ?? []);
-      setCompletedContracts(res.completedContracts ?? []);
-      setActiveContracts(res.activeContracts ?? []);
+      setCompletedContracts(completed);
+      setQuitContracts(quit);
+      setActiveContracts(active);
+      setAllContracts(all);
       setTotalEarned(res.totalEarned ?? 0);
       setToday(res.today);
       setOffline(false);
 
-      if ((res.completedContracts?.length ?? 0) === 0 && (res.shifts?.length ?? 0) > 0) {
+      if (all.length === 0 && (res.shifts?.length ?? 0) > 0) {
         setActiveTab('shifts');
       }
 
       await store.setJSON(CACHE_KEY, {
         shifts: res.shifts,
-        completedContracts: res.completedContracts,
-        activeContracts: res.activeContracts,
+        completedContracts: completed,
+        quitContracts: quit,
+        activeContracts: active,
+        allContracts: all,
         totalEarned: res.totalEarned,
         today: res.today,
       });
@@ -65,14 +76,23 @@ export default function Roster() {
       const cached = await store.getJSON<{
         shifts: RosterShift[];
         completedContracts?: ContractOffer[];
+        quitContracts?: ContractOffer[];
         activeContracts?: ContractOffer[];
+        allContracts?: ContractOffer[];
         totalEarned?: number;
         today: string;
       } | null>(CACHE_KEY, null);
       if (cached) {
+        const completed = cached.completedContracts ?? [];
+        const quit = cached.quitContracts ?? [];
+        const active = cached.activeContracts ?? [];
+        const all = cached.allContracts ?? [...completed, ...quit, ...active];
+
         setShifts(cached.shifts ?? []);
-        setCompletedContracts(cached.completedContracts ?? []);
-        setActiveContracts(cached.activeContracts ?? []);
+        setCompletedContracts(completed);
+        setQuitContracts(quit);
+        setActiveContracts(active);
+        setAllContracts(all);
         setTotalEarned(cached.totalEarned ?? 0);
         setToday(cached.today);
       }
@@ -87,14 +107,23 @@ export default function Roster() {
     store.getJSON<{
       shifts: RosterShift[];
       completedContracts?: ContractOffer[];
+      quitContracts?: ContractOffer[];
       activeContracts?: ContractOffer[];
+      allContracts?: ContractOffer[];
       totalEarned?: number;
       today: string;
     } | null>(CACHE_KEY, null).then((cached) => {
       if (cached) {
+        const completed = cached.completedContracts ?? [];
+        const quit = cached.quitContracts ?? [];
+        const active = cached.activeContracts ?? [];
+        const all = cached.allContracts ?? [...completed, ...quit, ...active];
+
         setShifts(cached.shifts ?? []);
-        setCompletedContracts(cached.completedContracts ?? []);
-        setActiveContracts(cached.activeContracts ?? []);
+        setCompletedContracts(completed);
+        setQuitContracts(quit);
+        setActiveContracts(active);
+        setAllContracts(all);
         setTotalEarned(cached.totalEarned ?? 0);
         setToday(cached.today);
         setLoading(false);
@@ -116,8 +145,8 @@ export default function Roster() {
     });
   };
 
-  const calculatedTotalEarnings = completedContracts.length > 0
-    ? completedContracts.reduce((sum, c) => sum + (c.totalEarnings || ((c.completedDaysCount || c.totalDays || 1) * (c.ratePerGuard || 600))), 0)
+  const calculatedTotalEarnings = allContracts.length > 0
+    ? allContracts.reduce((sum, c) => sum + (c.totalEarnings ?? ((c.completedDaysCount ?? 0) * (c.ratePerGuard || 600))), 0)
     : totalEarned;
 
   return (
@@ -189,7 +218,7 @@ export default function Roster() {
               color={activeTab === 'contracts' ? '#0B0D0F' : colors.textMuted}
             />
             <Text style={[styles.tabText, activeTab === 'contracts' && styles.tabTextActive]}>
-              Completed Contracts ({completedContracts.length})
+              Contracts ({allContracts.length})
             </Text>
           </Pressable>
 
@@ -209,28 +238,31 @@ export default function Roster() {
         </View>
 
         {/* Loading State */}
-        {loading && shifts.length === 0 && completedContracts.length === 0 ? (
+        {loading && shifts.length === 0 && allContracts.length === 0 ? (
           <Card style={styles.center}>
             <ActivityIndicator color={colors.primary} />
             <Muted>{t('common.loading')}</Muted>
           </Card>
         ) : activeTab === 'contracts' ? (
-          /* COMPLETED CONTRACTS TAB */
-          completedContracts.length === 0 ? (
+          /* CONTRACTS HISTORY TAB */
+          allContracts.length === 0 ? (
             <Card style={styles.center}>
               <Ionicons name="briefcase-outline" size={38} color={colors.textFaint} />
-              <Text style={styles.emptyTitle}>No Completed Contracts Yet</Text>
+              <Text style={styles.emptyTitle}>No Contract History Yet</Text>
               <Muted style={{ textAlign: 'center' }}>
-                When you finish all days of an assigned contract, it will appear here with your total earnings summary.
+                When you accept and work on security contracts, their completion or quit status and earnings summary will appear here.
               </Muted>
             </Card>
           ) : (
-            completedContracts.map((c) => {
+            allContracts.map((c) => {
               const totalDays = c.totalDays || 1;
-              const completedDays = c.completedDaysCount || totalDays;
+              const isQuit = !!c.isQuit || c.guardStatus === 'Quit';
+              const isCompleted = !isQuit && (!!c.isCompleted || c.guardStatus === 'Completed');
+              const completedDays = c.completedDaysCount ?? (isCompleted ? totalDays : 0);
               const rate = c.ratePerGuard || 600;
-              const earnings = c.totalEarnings || (completedDays * rate);
+              const earnings = c.totalEarnings ?? (completedDays * rate);
               const isExpanded = expandedContractId === c.contractId;
+              const pct = Math.min(100, Math.round(((completedDays || (isCompleted ? totalDays : 0)) / totalDays) * 100));
 
               return (
                 <Card key={c.contractId} style={styles.contractCard}>
@@ -238,7 +270,11 @@ export default function Roster() {
                   <View style={styles.contractHeader}>
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Ionicons name="shield-checkmark" size={18} color={colors.primary} />
+                        <Ionicons
+                          name={isQuit ? 'exit-outline' : 'shield-checkmark'}
+                          size={18}
+                          color={isQuit ? colors.danger : colors.primary}
+                        />
                         <Text style={styles.clientName} numberOfLines={1}>
                           {c.client}
                         </Text>
@@ -246,10 +282,22 @@ export default function Roster() {
                       <Text style={styles.contractCode}>{c.contractCode || `CNT-${c.contractId.slice(-4).toUpperCase()}`}</Text>
                     </View>
 
-                    <View style={styles.completedBadge}>
-                      <Ionicons name="checkmark-circle" size={14} color="#000" />
-                      <Text style={styles.completedBadgeText}>COMPLETED</Text>
-                    </View>
+                    {isQuit ? (
+                      <View style={styles.quitBadge}>
+                        <Ionicons name="exit" size={13} color="#fff" />
+                        <Text style={styles.quitBadgeText}>QUIT</Text>
+                      </View>
+                    ) : isCompleted ? (
+                      <View style={styles.completedBadge}>
+                        <Ionicons name="checkmark-circle" size={14} color="#000" />
+                        <Text style={styles.completedBadgeText}>COMPLETED</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.activeBadge}>
+                        <Ionicons name="shield-checkmark" size={13} color="#000" />
+                        <Text style={styles.activeBadgeText}>ACTIVE</Text>
+                      </View>
+                    )}
                   </View>
 
                   {/* Dates & Shift Info */}
@@ -260,26 +308,43 @@ export default function Roster() {
                     </Text>
                   </View>
 
-                  {/* Progress Bar 100% */}
+                  {/* Progress Bar */}
                   <View style={styles.progressContainer}>
                     <View style={styles.progressLabels}>
                       <Text style={styles.progressLabel}>Contract Progress</Text>
-                      <Text style={styles.progressVal}>
-                        {completedDays}/{totalDays} Days (100%)
+                      <Text style={[styles.progressVal, isQuit && { color: colors.danger }]}>
+                        {completedDays}/{totalDays} Days ({pct}%){isQuit ? ' · Left Contract' : ''}
                       </Text>
                     </View>
                     <View style={styles.progressBarTrack}>
-                      <View style={[styles.progressBarFill, { width: '100%' }]} />
+                      <View
+                        style={[
+                          styles.progressBarFill,
+                          {
+                            width: `${pct}%`,
+                            backgroundColor: isQuit ? colors.danger : isCompleted ? colors.onDuty : colors.primary,
+                          },
+                        ]}
+                      />
                     </View>
                   </View>
 
                   {/* Earnings Highlight Box */}
-                  <View style={styles.earningsBox}>
+                  <View style={[styles.earningsBox, isQuit && { backgroundColor: 'rgba(239, 68, 68, 0.08)', borderColor: 'rgba(239, 68, 68, 0.25)' }]}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.rateDetailText}>Rate: ₹{rate}/day ({completedDays} Days Completed)</Text>
-                      <Text style={styles.totalEarningsText}>Total Earned: ₹{earnings.toLocaleString('en-IN')}</Text>
+                      <Text style={styles.rateDetailText}>
+                        Rate: ₹{rate}/day ({completedDays} Days {isQuit ? 'Worked before Quit' : isCompleted ? 'Completed' : 'Worked'})
+                      </Text>
+                      <Text style={[styles.totalEarningsText, isQuit && { color: colors.danger }]}>
+                        Total Earned: ₹{earnings.toLocaleString('en-IN')}
+                      </Text>
+                      {isQuit && c.quitReason ? (
+                        <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
+                          Quit Reason: {c.quitReason}
+                        </Text>
+                      ) : null}
                     </View>
-                    <Ionicons name="cash" size={24} color={colors.primary} />
+                    <Ionicons name={isQuit ? 'alert-circle' : 'cash'} size={24} color={isQuit ? colors.danger : colors.primary} />
                   </View>
 
                   {/* Toggle History Breakdown */}
@@ -312,9 +377,33 @@ export default function Roster() {
                               </Text>
                             ) : null}
                           </View>
-                          <View style={styles.dayStatusBadge}>
-                            <Ionicons name="checkmark-circle" size={13} color={colors.onDuty} />
-                            <Text style={styles.dayStatusText}>{item.status}</Text>
+                          <View
+                            style={[
+                              styles.dayStatusBadge,
+                              item.status === 'Quit'
+                                ? { backgroundColor: 'rgba(239, 68, 68, 0.12)' }
+                                : item.status === 'Completed'
+                                ? { backgroundColor: 'rgba(16, 185, 129, 0.12)' }
+                                : { backgroundColor: 'rgba(255, 255, 255, 0.08)' },
+                            ]}
+                          >
+                            <Ionicons
+                              name={item.status === 'Quit' ? 'close-circle' : item.status === 'Completed' ? 'checkmark-circle' : 'time-outline'}
+                              size={13}
+                              color={item.status === 'Quit' ? colors.danger : item.status === 'Completed' ? colors.onDuty : colors.textMuted}
+                            />
+                            <Text
+                              style={[
+                                styles.dayStatusText,
+                                item.status === 'Quit'
+                                  ? { color: colors.danger }
+                                  : item.status === 'Completed'
+                                  ? { color: colors.onDuty }
+                                  : { color: colors.textMuted },
+                              ]}
+                            >
+                              {item.status}
+                            </Text>
                           </View>
                         </View>
                       ))}
@@ -523,6 +612,40 @@ const styles = StyleSheet.create({
   },
   completedBadgeText: {
     color: '#0B0D0F',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  quitBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    borderColor: colors.danger,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  quitBadgeText: {
+    color: colors.danger,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  activeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(245, 198, 35, 0.2)',
+    borderColor: colors.primary,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  activeBadgeText: {
+    color: colors.primary,
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0.5,

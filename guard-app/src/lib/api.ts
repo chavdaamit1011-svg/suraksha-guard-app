@@ -236,6 +236,10 @@ export type ContractOffer = {
   currentDayNumber?: number;
   completedDaysCount?: number;
   isCompleted?: boolean;
+  isQuit?: boolean;
+  guardStatus?: 'Accepted' | 'Quit' | 'Completed' | 'Pending' | 'Rejected' | string;
+  quitReason?: string;
+  quitAt?: string | null;
   totalEarnings?: number;
   dailyBreakdown?: {
     date: string;
@@ -740,7 +744,9 @@ export const api = {
       today: string;
       shifts: RosterShift[];
       completedContracts?: ContractOffer[];
+      quitContracts?: ContractOffer[];
       activeContracts?: ContractOffer[];
+      allContracts?: ContractOffer[];
       completedOrdersCount?: number;
       totalEarned?: number;
       averageRating?: number;

@@ -107,6 +107,15 @@ let armedForRosterId = '';
 /** The wake list last armed; re-armed only when it changes. */
 let armedWakeKey = '';
 
+function getSimulatedNow(testDate?: string | null, serverIso?: string): Date {
+  if (testDate && /^\d{4}-\d{2}-\d{2}$/.test(testDate)) {
+    const real = new Date();
+    const time = serverIso ? serverIso.slice(11) : real.toISOString().slice(11);
+    return new Date(`${testDate}T${time}`);
+  }
+  return serverIso ? new Date(serverIso) : new Date();
+}
+
 export const useDuty = create<DutyStore>((set, get) => ({
   bundle: null,
   current: null,
@@ -148,7 +157,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
         activeContract,
         myContracts: cached.myContracts ?? [],
         online: !!cached.guard?.isOnline,
-        duty: computeDuty(current, new Date(), cached.booking),
+        duty: computeDuty(current, getSimulatedNow(get().selectedTestDate, cached.serverTime), cached.booking),
         hydrated: true,
       });
     } else {
@@ -206,7 +215,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
         myContracts: bundle.myContracts ?? (bundle.activeContract ? [bundle.activeContract] : []),
         online: !!bundle.guard?.isOnline,
         // The server's verdict wins the moment it arrives.
-        duty: bundle.current?.duty ?? computeDuty(bundle.current, new Date(), bundle.booking),
+        duty: bundle.current?.duty ?? computeDuty(bundle.current, getSimulatedNow(get().selectedTestDate, bundle.serverTime), bundle.booking),
         offline: false,
         lastError: null,
         hydrated: true,
@@ -244,7 +253,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
       // and keep the local state machine running.
       set({ offline: !(e instanceof ApiError), lastError: e?.message ?? 'offline' });
       if (!get().bundle) await get().hydrateBundle();
-      set({ duty: computeDuty(get().current, new Date(), get().booking) });
+      set({ duty: computeDuty(get().current, getSimulatedNow(get().selectedTestDate, get().bundle?.serverTime), get().booking) });
     }
   },
 
@@ -252,7 +261,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
     const cur = get().current;
     const b = get().booking;
     if (!cur && !b) return;
-    set({ duty: computeDuty(cur, new Date(), b) });
+    set({ duty: computeDuty(cur, getSimulatedNow(get().selectedTestDate, get().bundle?.serverTime), b) });
   },
 
   setOnline: async (v, coords) => {
@@ -291,6 +300,21 @@ export const useDuty = create<DutyStore>((set, get) => ({
     const id = gid(useAuth.getState().guard);
     if (!id) return;
     await api.leaveContract(contractId, id, reason);
+    const updatedMyContracts = get().myContracts.filter((c) => c.contractId !== contractId);
+    const cached = await kv.getJSON<DutyBundle | null>(KEYS.todayBundle, null);
+    if (cached) {
+      cached.activeContract = null;
+      cached.myContracts = (cached.myContracts ?? []).filter((c) => c.contractId !== contractId);
+      if (cached.current && cached.current.contractCode) {
+        cached.current = null;
+      }
+      await kv.setJSON(KEYS.todayBundle, cached);
+    }
+    set({
+      activeContract: null,
+      myContracts: updatedMyContracts,
+      current: get().current?.contractCode ? null : get().current,
+    });
     await get().refresh();
   },
 
@@ -310,6 +334,22 @@ export const useDuty = create<DutyStore>((set, get) => ({
     const id = gid(useAuth.getState().guard);
     if (!id) return;
     await api.respondContract(contractId, id, action, reason);
+    if (action === 'leave' || action === 'reject') {
+      const cached = await kv.getJSON<DutyBundle | null>(KEYS.todayBundle, null);
+      if (cached) {
+        cached.activeContract = null;
+        cached.myContracts = (cached.myContracts ?? []).filter((c) => c.contractId !== contractId);
+        if (cached.current && cached.current.contractCode) {
+          cached.current = null;
+        }
+        await kv.setJSON(KEYS.todayBundle, cached);
+      }
+      set({
+        activeContract: null,
+        myContracts: get().myContracts.filter((c) => c.contractId !== contractId),
+        current: get().current?.contractCode ? null : get().current,
+      });
+    }
     await get().refresh();
   },
 
