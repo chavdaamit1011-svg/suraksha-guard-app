@@ -685,6 +685,9 @@ export const api = {
   rejectBooking: (bookingId: string, guardId: string, reason?: string) =>
     request('/api/guard/reject', { method: 'POST', body: { bookingId, guardId, reason } }),
 
+  cancelDuty: (bookingId: string, guardId: string, reason?: string) =>
+    request('/api/guard/cancel-duty', { method: 'POST', body: { bookingId, guardId, reason } }),
+
   startDuty: (bookingId: string, guardId: string, otp: string) =>
     request('/api/guard/start-duty', { method: 'POST', body: { bookingId, guardId, otp } }),
 

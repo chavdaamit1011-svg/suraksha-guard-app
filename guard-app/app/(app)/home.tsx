@@ -1073,6 +1073,28 @@ function TodayDutyCard({
     }
   }
 
+  const bundle = useDuty.getState().bundle;
+  const clientCancelled = (bundle as any)?.clientCancellationNotice;
+  let clientCancelledNotice = null;
+  if (clientCancelled) {
+    clientCancelledNotice = (
+      <View style={{ width: '100%', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', borderWidth: 1, borderRadius: radius.sm, padding: space.md, gap: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Ionicons name="alert-circle" size={18} color={colors.danger} />
+          <Text style={{ fontSize: 13, fontWeight: '800', color: colors.danger, flex: 1 }}>
+            Order {clientCancelled.bookingId} Cancelled by Client
+          </Text>
+        </View>
+        <Text style={{ fontSize: 12, color: colors.text }}>
+          Reason: "{clientCancelled.reason}"
+        </Text>
+        <Text style={{ fontSize: 11, color: colors.onDuty, fontWeight: '700', marginTop: 2 }}>
+          ✓ Your duty schedule has been cleared for new assignments.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <Card style={{ alignItems: 'center', paddingVertical: space.xl, gap: space.md }}>
       <Ionicons name="moon-outline" size={36} color={colors.textFaint} />
@@ -1085,6 +1107,7 @@ function TodayDutyCard({
         </Muted>
       </View>
 
+      {clientCancelledNotice}
       {upcomingContractNotice}
 
       <Button
@@ -1468,9 +1491,47 @@ function RequestDayLeaveModal({
   );
 }
 
+function getHoursUntilShift(schedDate?: string, startTime?: string) {
+  if (!schedDate) return 999;
+  let h = 9;
+  let m = 0;
+  if (startTime) {
+    const match = startTime.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+    if (match) {
+      h = parseInt(match[1], 10);
+      m = parseInt(match[2], 10);
+      const meridiem = match[3]?.toUpperCase();
+      if (meridiem === 'PM' && h < 12) h += 12;
+      if (meridiem === 'AM' && h === 12) h = 0;
+    }
+  }
+  const dateParts = schedDate.split(/[-/]/).map(Number);
+  let year = new Date().getFullYear();
+  let month = new Date().getMonth();
+  let day = new Date().getDate();
+  if (dateParts.length === 3) {
+    if (dateParts[0] > 1000) {
+      year = dateParts[0];
+      month = dateParts[1] - 1;
+      day = dateParts[2];
+    } else {
+      day = dateParts[0];
+      month = dateParts[1] - 1;
+      year = dateParts[2];
+    }
+  }
+  const start = new Date(year, month, day, h, m, 0, 0);
+  return (start.getTime() - Date.now()) / (1000 * 60 * 60);
+}
+
 function BookingCard({ booking }: { booking: any }) {
   const t = useT();
   const router = useRouter();
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('Personal Emergency');
+  const [customReason, setCustomReason] = useState('');
+  const [cancelLoading, setCancelLoading] = useState(false);
+
   const address = booking?.location?.address || booking?.location?.city || 'Assigned Location';
   const isActive = booking.bookingStatus === 'ACTIVE';
   const isPendingCheckin = ['ASSIGNED', 'EN_ROUTE', 'ARRIVED'].includes(booking.bookingStatus);
@@ -1489,104 +1550,275 @@ function BookingCard({ booking }: { booking: any }) {
   const specialInst = booking?.serviceRequirements?.specialInstructions;
   const personnel = booking?.personnelCount ? `${booking.personnelCount} Guard${booking.personnelCount > 1 ? 's' : ''}` : null;
 
-  return (
-    <Card style={isActive ? { borderColor: colors.onDuty, borderWidth: 1.5, gap: 6 } : { borderColor: colors.primary, borderWidth: 1.5, gap: 6 }}>
-      <View style={styles.rowBetween}>
-        <Muted>{booking.bookingId}</Muted>
-        <View style={[styles.badgePill, { backgroundColor: isActive ? colors.onDutyDim : isFuture ? colors.warningDim : 'rgba(245,198,35,0.1)' }]}>
-          <Text style={[styles.badgePillText, { color: isActive ? colors.onDuty : isFuture ? colors.warning : colors.primary }]}>
-            {isActive ? (t('duty.onDuty') || 'On Duty') : isCheckout ? (t('duty.checkOut') || 'Check Out') : isFuture ? 'Upcoming Duty' : (t('duty.readyToCheckIn') || 'Ready to Check In')}
-          </Text>
-        </View>
-      </View>
-      <Body style={{ fontWeight: '900', fontSize: 16, marginTop: 4 }}>{booking.customerName || 'Client Booking'}</Body>
-      <Muted style={{ marginTop: 2 }}>{address}</Muted>
+  const hoursUntilShift = getHoursUntilShift(schedDate, startTime);
+  const canCancelDuty = isPendingCheckin && hoursUntilShift >= 3;
 
-      {/* Schedule & Requirements Breakdown */}
-      <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: radius.sm, padding: space.sm, gap: 6, marginTop: 4, marginBottom: 4 }}>
+  const handleConfirmCancelDuty = async () => {
+    setCancelLoading(true);
+    try {
+      const finalReason = cancelReason === 'Other reason'
+        ? (customReason.trim() || 'Officer unavailable / personal reason')
+        : cancelReason;
+      await useDuty.getState().cancelDuty(finalReason);
+      setShowCancelModal(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to cancel duty.');
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
+  const REASONS = [
+    'Medical / Health Emergency',
+    'Personal / Family Emergency',
+    'Vehicle / Transit Issue',
+    'Other reason',
+  ];
+
+  return (
+    <>
+      <Card style={isActive ? { borderColor: colors.onDuty, borderWidth: 1.5, gap: 6 } : { borderColor: colors.primary, borderWidth: 1.5, gap: 6 }}>
         <View style={styles.rowBetween}>
-          <View style={styles.rowGap}>
-            <Ionicons name="calendar" size={15} color={colors.primary} />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
-              {schedDate || 'Today'}
+          <Muted>{booking.bookingId}</Muted>
+          <View style={[styles.badgePill, { backgroundColor: isActive ? colors.onDutyDim : isFuture ? colors.warningDim : 'rgba(245,198,35,0.1)' }]}>
+            <Text style={[styles.badgePillText, { color: isActive ? colors.onDuty : isFuture ? colors.warning : colors.primary }]}>
+              {isActive ? (t('duty.onDuty') || 'On Duty') : isCheckout ? (t('duty.checkOut') || 'Check Out') : isFuture ? 'Upcoming Duty' : (t('duty.readyToCheckIn') || 'Ready to Check In')}
             </Text>
           </View>
-          {timeDisplay ? (
+        </View>
+        <Body style={{ fontWeight: '900', fontSize: 16, marginTop: 4 }}>{booking.customerName || 'Client Booking'}</Body>
+        <Muted style={{ marginTop: 2 }}>{address}</Muted>
+
+        {/* Schedule & Requirements Breakdown */}
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: radius.sm, padding: space.sm, gap: 6, marginTop: 4, marginBottom: 4 }}>
+          <View style={styles.rowBetween}>
             <View style={styles.rowGap}>
-              <Ionicons name="time" size={15} color={colors.textMuted} />
-              <Text style={{ fontSize: 13, color: colors.text }}>{timeDisplay}</Text>
+              <Ionicons name="calendar" size={15} color={colors.primary} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                {schedDate || 'Today'}
+              </Text>
+            </View>
+            {timeDisplay ? (
+              <View style={styles.rowGap}>
+                <Ionicons name="time" size={15} color={colors.textMuted} />
+                <Text style={{ fontSize: 13, color: colors.text }}>{timeDisplay}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {(eventType || dressReq || personnel || booking.serviceType) ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+              {booking.serviceType ? (
+                <View style={styles.reqChip}>
+                  <Ionicons name="briefcase" size={12} color={colors.primary} />
+                  <Text style={styles.reqChipText}>{booking.serviceType}</Text>
+                </View>
+              ) : null}
+              {eventType ? (
+                <View style={styles.reqChip}>
+                  <Ionicons name="sparkles" size={12} color={colors.primary} />
+                  <Text style={styles.reqChipText}>{eventType}</Text>
+                </View>
+              ) : null}
+              {dressReq ? (
+                <View style={styles.reqChip}>
+                  <Ionicons name="shirt" size={12} color={colors.primary} />
+                  <Text style={styles.reqChipText}>{dressReq}</Text>
+                </View>
+              ) : null}
+              {personnel ? (
+                <View style={styles.reqChip}>
+                  <Ionicons name="people" size={12} color={colors.primary} />
+                  <Text style={styles.reqChipText}>{personnel}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {specialInst ? (
+            <View style={{ backgroundColor: 'rgba(245, 198, 35, 0.08)', borderRadius: 4, padding: 6, gap: 2, marginTop: 2 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Special Instructions:</Text>
+              <Text style={{ fontSize: 12, color: colors.text }}>{specialInst}</Text>
             </View>
           ) : null}
         </View>
 
-        {(eventType || dressReq || personnel || booking.serviceType) ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
-            {booking.serviceType ? (
-              <View style={styles.reqChip}>
-                <Ionicons name="briefcase" size={12} color={colors.primary} />
-                <Text style={styles.reqChipText}>{booking.serviceType}</Text>
-              </View>
-            ) : null}
-            {eventType ? (
-              <View style={styles.reqChip}>
-                <Ionicons name="sparkles" size={12} color={colors.primary} />
-                <Text style={styles.reqChipText}>{eventType}</Text>
-              </View>
-            ) : null}
-            {dressReq ? (
-              <View style={styles.reqChip}>
-                <Ionicons name="shirt" size={12} color={colors.primary} />
-                <Text style={styles.reqChipText}>{dressReq}</Text>
-              </View>
-            ) : null}
-            {personnel ? (
-              <View style={styles.reqChip}>
-                <Ionicons name="people" size={12} color={colors.primary} />
-                <Text style={styles.reqChipText}>{personnel}</Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
+        {/* Action button for on-demand booking checkin/checkout */}
+        <View style={{ marginTop: space.xs, gap: 8 }}>
+          {isPendingCheckin && isFuture ? (
+            <View style={{ backgroundColor: 'rgba(245,198,35,0.08)', borderColor: 'rgba(245,198,35,0.25)', borderWidth: 1, borderRadius: radius.sm, padding: space.md, gap: 4, alignItems: 'center' }}>
+              <Ionicons name="time-outline" size={24} color={colors.warning} />
+              <Text style={{ fontSize: 14, fontWeight: '800', color: colors.warning, textAlign: 'center' }}>
+                Duty starts on {schedDate} at {startTime || '09:00 AM'}
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center' }}>
+                Check-in will be enabled on the day of deployment.
+              </Text>
+            </View>
+          ) : isPendingCheckin && isToday ? (
+            <Button
+              label={t('duty.checkIn') || 'CHECK IN'}
+              size="huge"
+              variant="success"
+              icon={<Ionicons name="log-in" size={26} color="#fff" />}
+              onPress={() => router.push('/checkin?mode=in')}
+            />
+          ) : isActive || isCheckout ? (
+            <Button
+              label={t('duty.checkOut') || 'CHECK OUT'}
+              size="huge"
+              variant="danger"
+              icon={<Ionicons name="log-out" size={24} color="#fff" />}
+              onPress={() => router.push('/checkin?mode=out')}
+            />
+          ) : null}
 
-        {specialInst ? (
-          <View style={{ backgroundColor: 'rgba(245, 198, 35, 0.08)', borderRadius: 4, padding: 6, gap: 2, marginTop: 2 }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Special Instructions:</Text>
-            <Text style={{ fontSize: 12, color: colors.text }}>{specialInst}</Text>
-          </View>
-        ) : null}
-      </View>
+          {/* Guard Cancel Duty Option (Allowed >= 3h before shift) */}
+          {isPendingCheckin && (
+            canCancelDuty ? (
+              <Pressable
+                onPress={() => setShowCancelModal(true)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 10,
+                  borderRadius: radius.sm,
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  borderColor: 'rgba(239, 68, 68, 0.3)',
+                  borderWidth: 1,
+                }}
+              >
+                <Ionicons name="close-circle-outline" size={16} color={colors.danger} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.danger }}>
+                  Cancel Duty ({Math.max(3, Math.round(hoursUntilShift))}h before shift)
+                </Text>
+              </Pressable>
+            ) : (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 8,
+                  borderRadius: radius.sm,
+                  backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                  borderColor: 'rgba(255, 255, 255, 0.08)',
+                  borderWidth: 1,
+                }}
+              >
+                <Ionicons name="lock-closed" size={13} color={colors.textMuted} />
+                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textMuted }}>
+                  Cancellation closed (&lt; 3h to shift start)
+                </Text>
+              </View>
+            )
+          )}
+        </View>
+      </Card>
 
-      {/* Action button for on-demand booking checkin/checkout */}
-      <View style={{ marginTop: space.xs }}>
-        {isPendingCheckin && isFuture ? (
-          <View style={{ backgroundColor: 'rgba(245,198,35,0.08)', borderColor: 'rgba(245,198,35,0.25)', borderWidth: 1, borderRadius: radius.sm, padding: space.md, gap: 4, alignItems: 'center' }}>
-            <Ionicons name="time-outline" size={24} color={colors.warning} />
-            <Text style={{ fontSize: 14, fontWeight: '800', color: colors.warning, textAlign: 'center' }}>
-              Duty starts on {schedDate} at {startTime || '09:00 AM'}
-            </Text>
-            <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center' }}>
-              Check-in will be enabled on the day of deployment.
-            </Text>
+      {/* Guard Cancel Duty Reason Modal */}
+      {showCancelModal && (
+        <Modal visible animationType="fade" transparent onRequestClose={() => setShowCancelModal(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { maxWidth: 400 }]}>
+              <View style={styles.modalHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="alert-circle" size={22} color={colors.danger} />
+                  <Text style={styles.modalTitle}>Cancel Assigned Duty</Text>
+                </View>
+                <Pressable onPress={() => setShowCancelModal(false)} style={styles.modalCloseButton}>
+                  <Ionicons name="close" size={22} color={colors.text} />
+                </Pressable>
+              </View>
+
+              <Text style={{ fontSize: 12, color: colors.textMuted, lineHeight: 18 }}>
+                Cancelling will release booking <Text style={{ fontFamily: 'monospace', color: colors.primary, fontWeight: '700' }}>{booking.bookingId}</Text> back to Operations for immediate reassignment.
+              </Text>
+
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginTop: 4 }}>
+                Please select your reason for cancellation:
+              </Text>
+
+              <View style={{ gap: 8, marginVertical: 6 }}>
+                {REASONS.map((r) => {
+                  const selected = cancelReason === r;
+                  return (
+                    <Pressable
+                      key={r}
+                      onPress={() => setCancelReason(r)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: 10,
+                        borderRadius: radius.sm,
+                        backgroundColor: selected ? 'rgba(245, 198, 35, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+                        borderColor: selected ? colors.primary : 'transparent',
+                        borderWidth: 1,
+                      }}
+                    >
+                      <Ionicons
+                        name={selected ? 'radio-button-on' : 'radio-button-off'}
+                        size={18}
+                        color={selected ? colors.primary : colors.textMuted}
+                      />
+                      <Text style={{ fontSize: 13, color: colors.text, fontWeight: selected ? '700' : '400' }}>
+                        {r}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {cancelReason === 'Other reason' && (
+                <TextInput
+                  placeholder="Type your cancellation reason here..."
+                  placeholderTextColor={colors.textMuted}
+                  value={customReason}
+                  onChangeText={setCustomReason}
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    borderColor: 'rgba(255, 255, 255, 0.15)',
+                    borderWidth: 1,
+                    borderRadius: radius.sm,
+                    padding: 10,
+                    color: colors.text,
+                    fontSize: 13,
+                    minHeight: 60,
+                    textAlignVertical: 'top',
+                  }}
+                  multiline
+                />
+              )}
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: space.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    label="Keep Duty"
+                    variant="ghost"
+                    size="small"
+                    onPress={() => setShowCancelModal(false)}
+                    disabled={cancelLoading}
+                  />
+                </View>
+                <View style={{ flex: 1.4 }}>
+                  <Button
+                    label={cancelLoading ? 'Cancelling...' : 'Confirm Cancel'}
+                    variant="danger"
+                    size="small"
+                    loading={cancelLoading}
+                    onPress={handleConfirmCancelDuty}
+                  />
+                </View>
+              </View>
+            </View>
           </View>
-        ) : isPendingCheckin && isToday ? (
-          <Button
-            label={t('duty.checkIn') || 'CHECK IN'}
-            size="huge"
-            variant="success"
-            icon={<Ionicons name="log-in" size={26} color="#fff" />}
-            onPress={() => router.push('/checkin?mode=in')}
-          />
-        ) : isActive || isCheckout ? (
-          <Button
-            label={t('duty.checkOut') || 'CHECK OUT'}
-            size="huge"
-            variant="danger"
-            icon={<Ionicons name="log-out" size={24} color="#fff" />}
-            onPress={() => router.push('/checkin?mode=out')}
-          />
-        ) : null}
-      </View>
-    </Card>
+        </Modal>
+      )}
+    </>
   );
 }
 
