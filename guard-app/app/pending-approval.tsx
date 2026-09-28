@@ -72,10 +72,10 @@ export default function PendingApproval() {
           await store.del('sg.pendingPhone').catch(() => {});
           await store.del('sg.pendingGuardId').catch(() => {});
 
-          // Wait a moment so guard sees "Approved Successfully!", then route to PIN setup or home
+          // Wait a moment so guard sees "Congratulations! Profile Verified", then route to PIN setup
           setTimeout(() => {
-            router.replace(hasPin ? '/home' : '/pin?mode=set');
-          }, 1500);
+            router.replace('/pin?mode=set');
+          }, 2000);
         }
       } else if (res.registrationStatus === 'DECLINED') {
         if (!isNavigating.current) {
@@ -118,14 +118,14 @@ export default function PendingApproval() {
 
         {/* Header Title */}
         <Text style={[styles.title, isApproved && styles.titleApproved]}>
-          {isApproved ? 'Approved Successfully!' : 'Profile Under Review'}
+          {isApproved ? 'Congratulations! Profile Verified 🎉' : 'Profile Under Verification'}
         </Text>
 
         {/* Subtitle */}
         <Text style={styles.subtitle}>
           {isApproved
-            ? `Welcome ${approvedGuard?.name || 'Officer'}! Your registration has been approved. Redirecting to PIN setup…`
-            : 'Your registration has been submitted. Our team is verifying your details.'}
+            ? `Welcome, Officer ${approvedGuard?.name || ''}! Your profile has been approved. Please set your 4-digit Security PIN to activate your account.`
+            : 'Your registration has been submitted. Suraksha team is verifying your profile and documents.'}
         </Text>
 
         {/* Status Progress Steps */}
@@ -133,54 +133,38 @@ export default function PendingApproval() {
           <Step num="1" label="Registration submitted" done />
           <Step
             num="2"
-            label="OPS team reviews your documents"
+            label={isApproved ? "Suraksha profile verified" : "Suraksha profile & document verification"}
             done={isApproved}
             active={!isApproved}
           />
           <Step
             num="3"
-            label={isApproved ? 'Approved — Setting up PIN…' : 'Instant approval & PIN setup'}
-            done={isApproved}
+            label={isApproved ? "Set 4-digit Security PIN (Next)" : "Set your 4-digit Security PIN"}
+            done={false}
             active={isApproved}
           />
         </View>
 
-        {/* Real-time Status Badge */}
-        {!isApproved ? (
-          <View style={styles.statusBadge}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.statusBadgeText}>
-              Auto-detecting OPS approval in real-time…
-            </Text>
-          </View>
-        ) : (
+        {isApproved ? (
           <View style={styles.approvedBadge}>
             <Ionicons name="shield-checkmark" size={18} color="#10B981" />
             <Text style={styles.approvedBadgeText}>
-              Account Active · Loading Security PIN Screen…
+              ✓ Verification Complete · Ready for Security PIN Setup
             </Text>
           </View>
-        )}
+        ) : null}
 
         {/* Action Buttons */}
         <View style={{ width: '100%', gap: space.sm, marginTop: space.md }}>
           {!isApproved ? (
-            <>
-              <Button
-                label={checking ? 'Checking Status…' : 'Check Status Now'}
-                variant="primary"
-                onPress={checkStatus}
-                disabled={checking}
-              />
-              <Button
-                label="Back to Login"
-                variant="ghost"
-                onPress={handleLogout}
-              />
-            </>
+            <Button
+              label="Back to Login"
+              variant="ghost"
+              onPress={handleLogout}
+            />
           ) : (
             <Button
-              label="Proceed to PIN Setup"
+              label="Set 4-Digit Security PIN"
               onPress={() => router.replace(hasPin ? '/home' : '/pin?mode=set')}
             />
           )}

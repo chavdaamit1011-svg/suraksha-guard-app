@@ -7,6 +7,7 @@ import { useAuth } from '@/store/auth';
 export default function Index() {
   const guard = useAuth((s) => s.guard);
   const needsPin = useAuth((s) => s.needsPin);
+  const hasPin = useAuth((s) => s.hasPin);
   const [langChosen, setLangChosen] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -16,6 +17,7 @@ export default function Index() {
   if (langChosen === null) return null;
   if (!langChosen) return <Redirect href="/language" />;
   if (!guard) return <Redirect href="/login" />;
+  if (!hasPin) return <Redirect href="/pin?mode=set" />;
   if (needsPin) return <Redirect href="/pin?mode=enter" />;
   return <Redirect href="/home" />;
 }
