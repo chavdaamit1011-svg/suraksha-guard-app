@@ -353,11 +353,23 @@ export const useDuty = create<DutyStore>((set, get) => ({
   respondContract: async (contractId: string, action: 'accept' | 'reject' | 'leave', reason?: string) => {
     const id = gid(useAuth.getState().guard);
     if (!id) return;
-    await api.respondContract(contractId, id, action, reason);
+
+    // Optimistically remove the offer card immediately
+    set({
+      contractOffers: get().contractOffers.filter((c) => c.contractId !== contractId),
+    });
+
+    try {
+      await api.respondContract(contractId, id, action, reason);
+    } catch (err) {
+      // On error, restore – will be corrected by refresh
+    }
+
     if (action === 'leave' || action === 'reject') {
       const cached = await kv.getJSON<DutyBundle | null>(KEYS.todayBundle, null);
       if (cached) {
         cached.activeContract = null;
+        cached.contractOffers = (cached.contractOffers ?? []).filter((c: any) => c.contractId !== contractId);
         cached.myContracts = (cached.myContracts ?? []).filter((c) => c.contractId !== contractId);
         if (cached.current && cached.current.contractCode) {
           cached.current = null;
@@ -369,6 +381,13 @@ export const useDuty = create<DutyStore>((set, get) => ({
         myContracts: get().myContracts.filter((c) => c.contractId !== contractId),
         current: get().current?.contractCode ? null : get().current,
       });
+    } else if (action === 'accept') {
+      // On accept, refresh to get active contract info
+      const cached = await kv.getJSON<DutyBundle | null>(KEYS.todayBundle, null);
+      if (cached) {
+        cached.contractOffers = (cached.contractOffers ?? []).filter((c: any) => c.contractId !== contractId);
+        await kv.setJSON(KEYS.todayBundle, cached);
+      }
     }
     await get().refresh();
   },
