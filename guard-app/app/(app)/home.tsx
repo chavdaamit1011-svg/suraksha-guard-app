@@ -1281,16 +1281,25 @@ function TodayDutyCard({
     }
   }
 
+  const [dismissedCancellationId, setDismissedCancellationId] = useState<string | null>(null);
   const clientCancelled = (bundle as any)?.clientCancellationNotice;
+  const currentViewedDate = useDuty.getState().selectedTestDate || bundle?.todayKey || new Date().toISOString().slice(0, 10);
+  const isCancelledForCurrentDate = clientCancelled?.scheduleDate ? clientCancelled.scheduleDate === currentViewedDate : true;
+
   let clientCancelledNotice = null;
-  if (clientCancelled) {
+  if (clientCancelled && isCancelledForCurrentDate && dismissedCancellationId !== clientCancelled.bookingId) {
     clientCancelledNotice = (
       <View style={{ width: '100%', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', borderWidth: 1, borderRadius: radius.sm, padding: space.md, gap: 4 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Ionicons name="alert-circle" size={18} color={colors.danger} />
-          <Text style={{ fontSize: 13, fontWeight: '800', color: colors.danger, flex: 1 }}>
-            Order {clientCancelled.bookingId} Cancelled by Client
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+            <Ionicons name="alert-circle" size={18} color={colors.danger} />
+            <Text style={{ fontSize: 13, fontWeight: '800', color: colors.danger, flex: 1 }}>
+              Order {clientCancelled.bookingId} Cancelled by Client
+            </Text>
+          </View>
+          <Pressable onPress={() => setDismissedCancellationId(clientCancelled.bookingId)} hitSlop={12}>
+            <Ionicons name="close" size={18} color={colors.textMuted} />
+          </Pressable>
         </View>
         <Text style={{ fontSize: 12, color: colors.text }}>
           Reason: "{clientCancelled.reason}"
