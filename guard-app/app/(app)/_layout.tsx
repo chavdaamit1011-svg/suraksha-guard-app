@@ -6,6 +6,7 @@ import { SosButton } from '@/components/SosButton';
 import { api } from '@/lib/api';
 import { getLaunchNotificationData, onNotificationResponse } from '@/lib/notifications';
 import { flush } from '@/lib/queue';
+import { quickFix } from '@/lib/location';
 import { guardId, useAuth } from '@/store/auth';
 import { useDuty } from '@/store/duty';
 import { colors } from '@/theme';
@@ -95,6 +96,12 @@ export default function AppLayout() {
       useDuty.getState().hydrateBundle(); // instant render from cache, then revalidate
       refresh();
       refreshQueued();
+      // Probe GPS fix on app startup / resume so the ops radar instantly tracks the officer
+      quickFix().then((pos) => {
+        if (pos) {
+          useDuty.getState().pushLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.heading ?? undefined);
+        }
+      }).catch(() => {});
       poll.current ??= setInterval(refresh, BUNDLE_POLL_MS);
       ticker.current ??= setInterval(tick, TICK_MS);
     };

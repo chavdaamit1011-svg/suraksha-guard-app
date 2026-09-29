@@ -372,13 +372,21 @@ export const useDuty = create<DutyStore>((set, get) => ({
   },
 
   pushLocation: async (lat, lng, heading) => {
-    const id = gid(useAuth.getState().guard);
+    const g = useAuth.getState().guard;
+    const id = gid(g);
     const b = get().booking;
     const cur = get().current;
-    emitLocation({ dutyId: b?.bookingId ?? cur?.rosterId ?? '', lat, lng, heading });
-    if (!id || !b) return;
+    emitLocation({ 
+      dutyId: b?.bookingId ?? cur?.rosterId ?? '',
+      guardId: id ?? '',
+      guardName: g?.name ?? '',
+      lat, 
+      lng, 
+      heading 
+    });
+    if (!id) return;
     try {
-      await api.postLocation(b.bookingId, id, lat, lng);
+      await api.postLocation(b?.bookingId || '', id, lat, lng);
     } catch {
       /* the socket already carried the live fix; REST persistence retries next tick */
     }

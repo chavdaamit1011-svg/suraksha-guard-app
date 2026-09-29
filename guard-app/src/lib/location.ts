@@ -23,8 +23,11 @@ export async function quickFix(opts: {
     ]);
 
   try {
-    const perm = await Location.getForegroundPermissionsAsync();
-    if (!perm.granted) return null;
+    let perm = await Location.getForegroundPermissionsAsync();
+    if (!perm.granted) {
+      perm = await Location.requestForegroundPermissionsAsync();
+      if (!perm.granted) return null;
+    }
 
     let pos = await attempt(accuracy, timeoutMs);
     if (!pos && accuracy > Location.Accuracy.Balanced) pos = await attempt(Location.Accuracy.Balanced, 5_000);

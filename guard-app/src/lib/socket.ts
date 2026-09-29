@@ -21,7 +21,7 @@ export function joinDutyRoom(dutyId: string) {
 }
 
 /** Emit a live location fix (server broadcasts to the duty room + ops radar). */
-export function emitLocation(data: { dutyId: string; lat: number; lng: number; heading?: number }) {
+export function emitLocation(data: { dutyId?: string; guardId?: string; guardName?: string; lat: number; lng: number; heading?: number }) {
   getSocket().emit('guard-location-update', data);
 }
 
