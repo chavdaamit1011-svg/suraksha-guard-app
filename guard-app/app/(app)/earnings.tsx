@@ -208,13 +208,6 @@ export default function EarningsScreen() {
             </>
           ) : null}
 
-          {/* Six-month bar row */}
-          {(data?.history?.length ?? 0) > 1 ? (
-            <View style={{ gap: space.sm }}>
-              <Muted>{t('earnings.lastMonths')}</Muted>
-              <BarRow history={data!.history} />
-            </View>
-          ) : null}
 
           <Muted>{t('earnings.payslips')}</Muted>
           {(data?.payslips?.length ?? 0) === 0 ? (
@@ -223,17 +216,36 @@ export default function EarningsScreen() {
               <Muted style={{ textAlign: 'center' }}>{t('earnings.noPayslips')}</Muted>
             </Card>
           ) : (
-            data!.payslips.map((p) => (
-              <Pressable key={p.period} onPress={() => setOpen(p)}>
+            data!.payslips.map((p, idx) => (
+              <Pressable key={`${p.period}-${idx}`} onPress={() => setOpen(p)}>
                 <Card style={styles.payslipRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.period}>{monthName(p.period, lang)}</Text>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <Text style={styles.period}>{p.bookingId || monthName(p.period, lang)}</Text>
+                      {p.isContract ? (
+                        <View style={styles.contractBadge}>
+                          <Ionicons name="briefcase" size={11} color={colors.primary} />
+                          <Text style={styles.contractBadgeText}>CONTRACT</Text>
+                        </View>
+                      ) : p.bookingId?.startsWith('BK-') ? (
+                        <View style={styles.shiftBadge}>
+                          <Ionicons name="calendar-outline" size={11} color="#60a5fa" />
+                          <Text style={styles.shiftBadgeText}>DAILY SHIFT</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    {p.siteName ? (
+                      <Text style={styles.payslipSite} numberOfLines={1}>
+                        {p.siteName}
+                      </Text>
+                    ) : null}
                     <Muted>
-                      {p.daysPresent} {t('earnings.days')}
+                      {p.daysPresent} {p.daysPresent === 1 ? 'day' : t('earnings.days')}
                       {p.otHours > 0 ? ` · ${p.otHours} ${t('earnings.hours')} OT` : ''}
+                      {p.date ? ` · ${p.date}` : ''}
                     </Muted>
                   </View>
-                  <View style={{ alignItems: 'flex-end' }}>
+                  <View style={{ alignItems: 'flex-end', marginLeft: 8 }}>
                     <Text style={styles.net}>{rupees(p.netPaise)}</Text>
                     <Text style={[styles.status, { color: p.status === 'Completed' ? colors.onDuty : colors.warning }]}>
                       {p.status === 'Completed' ? t('earnings.paid') : t('earnings.notYetPaid')}
@@ -314,7 +326,14 @@ function PayslipDetail({
         <Pressable onPress={onBack} hitSlop={12}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
-        <H2>{monthName(payslip.period, lang)}</H2>
+        <View style={{ flex: 1, alignItems: 'center', marginHorizontal: 8 }}>
+          <H2>{payslip.bookingId || monthName(payslip.period, lang)}</H2>
+          {payslip.siteName ? (
+            <Text style={{ color: colors.textMuted, fontSize: font.tiny, marginTop: 2 }} numberOfLines={1}>
+              {payslip.siteName}
+            </Text>
+          ) : null}
+        </View>
         <Pressable onPress={speaking ? onStop : () => onRead(spoken)} hitSlop={12}>
           <Ionicons name={speaking ? 'stop-circle' : 'volume-medium'} size={26} color={colors.primary} />
         </Pressable>
@@ -332,7 +351,7 @@ function PayslipDetail({
                 {payslip.paidOn ? new Date(payslip.paidOn).toLocaleDateString('en-IN') : ''}
               </Text>
             </View>
-            {payslip.referenceNo ? <Muted>UTR {payslip.referenceNo}</Muted> : null}
+            {payslip.referenceNo ? <Muted>Ref: {payslip.referenceNo}</Muted> : null}
           </>
         ) : (
           <View style={styles.rowGap}>
@@ -482,6 +501,45 @@ const styles = StyleSheet.create({
   },
   payslipRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: touch.minTap },
   period: { color: colors.text, fontSize: font.body, fontWeight: '800' },
+  contractBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(255, 215, 0, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.4)',
+  },
+  contractBadgeText: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  shiftBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(96, 165, 250, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.4)',
+  },
+  shiftBadgeText: {
+    color: '#60a5fa',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  payslipSite: {
+    color: colors.textMuted,
+    fontSize: font.tiny,
+    fontWeight: '600',
+  },
   net: { color: colors.text, fontSize: font.h3, fontWeight: '900' },
   lineRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
   lineLabel: { color: colors.textMuted, fontSize: font.body },

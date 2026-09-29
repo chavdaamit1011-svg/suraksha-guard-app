@@ -446,6 +446,13 @@ export type Payslip = {
   carriedForwardPaise: number;
   paidOn: string | null;
   referenceNo: string;
+  isContract?: boolean;
+  contractId?: string;
+  bookingId?: string;
+  serviceName?: string;
+  siteName?: string;
+  date?: string;
+  clientRating?: number;
 };
 
 /** The running month, computed from attendance. Never to be shown as settled pay. */

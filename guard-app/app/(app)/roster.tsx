@@ -145,9 +145,17 @@ export default function Roster() {
     });
   };
 
-  const calculatedTotalEarnings = allContracts.length > 0
-    ? allContracts.reduce((sum, c) => sum + (c.totalEarnings ?? ((c.completedDaysCount ?? 0) * (c.ratePerGuard || 600))), 0)
-    : totalEarned;
+  const contractEarningsTotal = allContracts.reduce(
+    (sum, c) => sum + (c.totalEarnings ?? ((c.completedDaysCount ?? 0) * (c.ratePerGuard || 600))),
+    0
+  );
+  const shiftEarningsTotal = shifts
+    .filter((s) => s.status === 'Completed')
+    .reduce((sum, s) => sum + (s.payout || 0), 0);
+  const combinedTotalEarnings = contractEarningsTotal + shiftEarningsTotal;
+  const totalContractDays = allContracts.reduce((sum, c) => sum + (c.completedDaysCount || 0), 0);
+  const completedDailyShiftsCount = shifts.filter((s) => s.status === 'Completed').length;
+  const totalDaysWorked = totalContractDays + completedDailyShiftsCount;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
@@ -184,8 +192,20 @@ export default function Roster() {
         <Card style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.summaryLabel}>TOTAL CONTRACT EARNINGS</Text>
-              <Text style={styles.summaryAmount}>₹{calculatedTotalEarnings.toLocaleString('en-IN')}</Text>
+              <Text style={styles.summaryLabel}>TOTAL DUTY & CONTRACT EARNINGS</Text>
+              <Text style={styles.summaryAmount}>₹{combinedTotalEarnings.toLocaleString('en-IN')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                <View style={{ backgroundColor: 'rgba(245,198,35,0.15)', borderColor: 'rgba(245,198,35,0.35)', borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                  <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '700' }}>
+                    Contracts: ₹{contractEarningsTotal.toLocaleString('en-IN')}
+                  </Text>
+                </View>
+                <View style={{ backgroundColor: 'rgba(56,189,248,0.15)', borderColor: 'rgba(56,189,248,0.35)', borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                  <Text style={{ fontSize: 11, color: '#38BDF8', fontWeight: '700' }}>
+                    Daily Shifts: ₹{shiftEarningsTotal.toLocaleString('en-IN')}
+                  </Text>
+                </View>
+              </View>
             </View>
             <View style={styles.summaryIconWrapper}>
               <Ionicons name="wallet" size={28} color={colors.primary} />
@@ -194,14 +214,17 @@ export default function Roster() {
           <View style={styles.summaryStatsRow}>
             <View style={styles.statBox}>
               <Text style={styles.statVal}>{completedContracts.length}</Text>
-              <Text style={styles.statLabel}>Completed Contracts</Text>
+              <Text style={styles.statLabel}>Contracts ({totalContractDays} Days)</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statBox}>
-              <Text style={styles.statVal}>
-                {shifts.filter((s) => s.status === 'Completed').length}
-              </Text>
-              <Text style={styles.statLabel}>Shifts Worked</Text>
+              <Text style={styles.statVal}>{completedDailyShiftsCount}</Text>
+              <Text style={styles.statLabel}>Daily Shifts</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
+              <Text style={[styles.statVal, { color: colors.onDuty }]}>{totalDaysWorked}</Text>
+              <Text style={styles.statLabel}>Total Shifts</Text>
             </View>
           </View>
         </Card>
