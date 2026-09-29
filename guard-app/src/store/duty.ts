@@ -145,9 +145,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
     if (gid(useAuth.getState().guard) !== id) return;
     if (cached) {
       const activeContract = cached.activeContract ?? null;
-      const current = activeContract
-        ? cached.current
-        : (cached.current && !cached.current.contractCode ? cached.current : null);
+      const current = cached.current ?? null;
       set({
         bundle: cached,
         current,

@@ -394,9 +394,6 @@ export default function DutyHome() {
         !!rawContract.isQuit ||
         rawContract.guardStatus === 'Quit' ||
         rawContract.guardStatus === 'Rejected' ||
-        !!rawContract.isCompleted ||
-        rawContract.guardStatus === 'Completed' ||
-        (rawContract.completedDaysCount ?? 0) >= (rawContract.totalDays ?? 1) ||
         (!!rawContract.endDate && currentDateKey > rawContract.endDate)
       )
     : false;
@@ -668,8 +665,8 @@ export default function DutyHome() {
         </View>
 
         <TodayDutyCard
-          current={effectiveContract ? current : (current && !current.contractCode ? current : null)}
-          duty={effectiveContract ? duty : (current && !current.contractCode ? duty : { ...duty, state: 'no_duty', canCheckIn: false, canCheckOut: false })}
+          current={current}
+          duty={duty}
           activeContract={effectiveContract}
           countdown={countdown}
           isOffer={isOffer}

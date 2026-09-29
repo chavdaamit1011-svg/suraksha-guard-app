@@ -88,7 +88,8 @@ export default function CheckIn() {
    * confirming the guard is physically there. Rostered duty has the geofence instead, so asking
    * for a code would be one more thing to type for no added evidence.
    */
-  const needsOtp = !current && !!booking;
+  const isBookingDuty = Boolean(booking || current?.bookingId);
+  const needsOtp = isBookingDuty;
 
   // --- Location: start warming immediately; the guard opened this screen to check in ---
   // Runs once. It used to depend on the duty bundle, which the background refresh replaces every
@@ -152,13 +153,14 @@ export default function CheckIn() {
 
   // For on-demand bookings in check-out mode: ensure checkout is initiated on the server so the client has the OTP
   useEffect(() => {
-    if (!isIn && booking && booking.bookingStatus === 'ACTIVE') {
+    const bId = booking?.bookingId || current?.bookingId;
+    if (!isIn && bId) {
       const id = guardId(guard);
       if (id) {
-        api.initiateCheckout(booking.bookingId, id).catch(() => {});
+        api.initiateCheckout(bId, id).catch(() => {});
       }
     }
-  }, [isIn, booking?.bookingId, booking?.bookingStatus, guard]);
+  }, [isIn, booking?.bookingId, current?.bookingId, guard]);
 
   useEffect(() => {
     if (!perm?.granted) requestPerm();
@@ -216,13 +218,29 @@ export default function CheckIn() {
   const confirm = async () => {
     if (!guard) return;
     if (reasonRequired && !reason) return setError(t('checkin.pickReason'));
-    if (needsOtp && otp.length !== 6) return setError(isIn ? t('duty.arrivalOtp') : t('duty.checkoutOtp'));
+    if (needsOtp && otp.length !== 6) {
+      return setError(isIn ? (t('duty.arrivalOtp') || 'Please enter 6-digit Arrival OTP from client') : (t('duty.checkoutOtp') || 'Please enter 6-digit Checkout OTP from client'));
+    }
 
     setBusy(true);
     setError('');
     const id = guardId(guard);
 
     try {
+      let finalSelfie = selfie;
+      if (!finalSelfie && perm?.granted) {
+        try {
+          const shot = await cam.current?.takePictureAsync({ quality: 0.5, skipProcessing: true });
+          if (shot?.uri) {
+            const compressed = await ImageManipulator.manipulateAsync(shot.uri, [{ resize: { width: 640 } }], {
+              compress: 0.5,
+              format: ImageManipulator.SaveFormat.JPEG,
+            });
+            finalSelfie = compressed.uri;
+            setSelfie(compressed.uri);
+          }
+        } catch {}
+      }
       const [batteryPct, batteryState, net, photoHash, integrity] = await Promise.all([
         Battery.getBatteryLevelAsync().catch(() => -1),
         Battery.getBatteryStateAsync().catch(() => Battery.BatteryState.UNKNOWN),
@@ -286,12 +304,13 @@ export default function CheckIn() {
       });
 
       // 3. Drive the on-demand booking state machine when this is a B2C duty.
-      if (booking && needsOtp) {
+      const bId = booking?.bookingId || current?.bookingId;
+      if (bId && needsOtp) {
         try {
           if (isIn) {
-            await api.startDuty(booking.bookingId, id, otp);
+            await api.startDuty(bId, id, otp);
           } else {
-            await api.completeDuty(booking.bookingId, id, otp);
+            await api.completeDuty(bId, id, otp);
           }
         } catch (apiErr: any) {
           setError(apiErr?.message || (isIn ? t('duty.arrivalOtp') : t('duty.checkoutOtp')));
@@ -460,17 +479,36 @@ export default function CheckIn() {
       ) : null}
 
       {needsOtp ? (
-        <View style={{ gap: space.xs }}>
-          <Muted>{isIn ? t('duty.arrivalOtp') : t('duty.checkoutOtp')}</Muted>
+        <Card style={{ backgroundColor: '#181A20', borderColor: colors.primary, borderWidth: 1, gap: space.sm }}>
+          <View style={styles.rowBetween}>
+            <View style={styles.rowGap}>
+              <Ionicons name="key" size={20} color={colors.primary} />
+              <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
+                {isIn ? 'Client Arrival OTP' : 'Client Checkout OTP'}
+              </Text>
+            </View>
+            <View style={[styles.badgePill, { backgroundColor: 'rgba(245, 198, 35, 0.15)' }]}>
+              <Text style={[styles.badgePillText, { color: colors.primary }]}>6-DIGIT CODE</Text>
+            </View>
+          </View>
+          <Muted>
+            {isIn
+              ? 'Ask the client for the 6-digit Arrival OTP shown on their screen to start duty.'
+              : 'Ask the client for the 6-digit Checkout OTP shown on their screen to complete duty.'}
+          </Muted>
           <TextInput
             value={otp}
-            onChangeText={(v) => setOtp(v.replace(/\D/g, '').slice(0, 6))}
+            onChangeText={(v) => {
+              setError('');
+              setOtp(v.replace(/\D/g, '').slice(0, 6));
+            }}
             keyboardType="number-pad"
-            placeholder="------"
+            placeholder="• • • • • •"
             placeholderTextColor={colors.textFaint}
-            style={styles.otp}
+            style={[styles.otp, { letterSpacing: 10, fontSize: 24, textAlign: 'center', fontWeight: '900', color: colors.primary, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: radius.md, paddingVertical: space.sm }]}
+            maxLength={6}
           />
-        </View>
+        </Card>
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
