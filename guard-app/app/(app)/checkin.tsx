@@ -88,7 +88,7 @@ export default function CheckIn() {
    * confirming the guard is physically there. Rostered duty has the geofence instead, so asking
    * for a code would be one more thing to type for no added evidence.
    */
-  const isBookingDuty = Boolean(booking || current?.bookingId);
+  const isBookingDuty = Boolean(booking || (current as any)?.bookingId);
   const needsOtp = isBookingDuty;
 
   // --- Location: start warming immediately; the guard opened this screen to check in ---
@@ -153,14 +153,14 @@ export default function CheckIn() {
 
   // For on-demand bookings in check-out mode: ensure checkout is initiated on the server so the client has the OTP
   useEffect(() => {
-    const bId = booking?.bookingId || current?.bookingId;
+    const bId = booking?.bookingId || (current as any)?.bookingId;
     if (!isIn && bId) {
       const id = guardId(guard);
       if (id) {
         api.initiateCheckout(bId, id).catch(() => {});
       }
     }
-  }, [isIn, booking?.bookingId, current?.bookingId, guard]);
+  }, [isIn, booking?.bookingId, (current as any)?.bookingId, guard]);
 
   useEffect(() => {
     if (!perm?.granted) requestPerm();
@@ -304,7 +304,7 @@ export default function CheckIn() {
       });
 
       // 3. Drive the on-demand booking state machine when this is a B2C duty.
-      const bId = booking?.bookingId || current?.bookingId;
+      const bId = booking?.bookingId || (current as any)?.bookingId;
       if (bId && needsOtp) {
         try {
           if (isIn) {
@@ -614,4 +614,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   successMeta: { color: colors.textMuted, fontSize: font.body, fontWeight: '700', textAlign: 'center' },
+  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  badgePill: { paddingHorizontal: space.sm, paddingVertical: 4, borderRadius: radius.sm },
+  badgePillText: { fontSize: font.tiny, fontWeight: '900', letterSpacing: 0.5 },
 });

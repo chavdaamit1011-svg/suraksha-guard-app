@@ -43,6 +43,7 @@ type DutyStore = {
   duty: LocalDuty;
 
   booking: Booking | null;
+  upcomingBookings: any[];
   contractOffers: ContractOffer[];
   activeContract: ContractOffer | null;
   myContracts: ContractOffer[];
@@ -124,6 +125,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
   alerts: [],
   duty: IDLE_DUTY,
   booking: null,
+  upcomingBookings: [],
   contractOffers: [],
   activeContract: null,
   myContracts: [],
@@ -152,6 +154,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
         timeline: cached.timeline ?? [],
         alerts: cached.alerts ?? [],
         booking: (cached.booking as Booking) ?? null,
+        upcomingBookings: cached.upcomingBookings ?? [],
         contractOffers: cached.contractOffers ?? [],
         activeContract,
         myContracts: cached.myContracts ?? [],
@@ -209,6 +212,7 @@ export const useDuty = create<DutyStore>((set, get) => ({
         timeline: bundle.timeline ?? [],
         alerts: bundle.alerts ?? [],
         booking: (bundle.booking as Booking) ?? null,
+        upcomingBookings: bundle.upcomingBookings ?? [],
         contractOffers: bundle.contractOffers ?? [],
         activeContract: bundle.activeContract ?? null,
         myContracts: bundle.myContracts ?? (bundle.activeContract ? [bundle.activeContract] : []),

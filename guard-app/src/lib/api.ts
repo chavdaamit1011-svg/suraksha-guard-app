@@ -209,6 +209,21 @@ export type DutyBundle = {
   alerts: DutyAlert[];
   /** The on-demand B2C booking path, still served alongside the roster. */
   booking: Record<string, any> | null;
+  /** Accepted upcoming orders for this guard */
+  upcomingBookings?: Array<{
+    bookingId: string;
+    orderId: string;
+    serviceType: string;
+    customerName: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    timing: string;
+    location: string;
+    bookingStatus: string;
+    personnelCount: number;
+    totalCost: number;
+  }>;
   /** Live replacement offers, so a missed push does not mean a missed shift. */
   offers: ReplacementOffer[];
   /** Pending contract assignments from agency portal awaiting guard acceptance */

@@ -24,40 +24,26 @@ export type LocalDuty = {
 export function computeDuty(
   a: Assignment | null,
   now: Date = new Date(),
-  booking?: { bookingStatus?: string; [k: string]: any } | null
+  booking?: { bookingStatus?: string; schedule?: { date?: string }; [k: string]: any } | null
 ): LocalDuty {
   if (!a) {
     if (booking) {
       const bs = booking.bookingStatus ?? '';
+      const schedDate = booking.schedule?.date;
+      const nowIso = now.toISOString().slice(0, 10);
+
+      if (schedDate && schedDate !== nowIso && !['ACTIVE', 'CHECKOUT_INITIATED'].includes(bs)) {
+        return {
+          state: 'no_duty',
+          countdownSec: null,
+          canCheckIn: false,
+          canCheckOut: false,
+          lateByMin: 0,
+          earlyOutReasonRequired: false,
+        };
+      }
+
       if (['ASSIGNED', 'EN_ROUTE', 'ARRIVED'].includes(bs)) {
-        const schedDate = booking.schedule?.date;
-        const nowIso = now.toISOString().slice(0, 10);
-
-        if (schedDate && nowIso < schedDate) {
-          let countdownSec: number | null = null;
-          const startTimeStr = booking.schedule?.startTime || '09:00';
-          const match = startTimeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
-          if (match) {
-            let h = parseInt(match[1], 10);
-            const m = parseInt(match[2], 10);
-            const meridiem = match[3]?.toUpperCase();
-            if (meridiem === 'PM' && h < 12) h += 12;
-            if (meridiem === 'AM' && h === 12) h = 0;
-            const target = new Date(`${schedDate}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
-            const diffSec = Math.round((target.getTime() - now.getTime()) / 1000);
-            if (diffSec > 0) countdownSec = diffSec;
-          }
-
-          return {
-            state: 'upcoming',
-            countdownSec,
-            canCheckIn: false,
-            canCheckOut: false,
-            lateByMin: 0,
-            earlyOutReasonRequired: false,
-          };
-        }
-
         return {
           state: 'check_in',
           countdownSec: null,
@@ -87,7 +73,7 @@ export function computeDuty(
           earlyOutReasonRequired: false,
         };
       }
-      if (bs === 'COMPLETED') {
+      if (bs === 'COMPLETED' && (!schedDate || schedDate === nowIso)) {
         return {
           state: 'complete',
           countdownSec: null,

@@ -37,7 +37,7 @@ const TILES: Tile[] = [
 
 type Band = { tone: 'off' | 'on' | 'warn' | 'danger'; icon: keyof typeof Ionicons.glyphMap; text: string };
 
-function bandFor(state: DutyStateName, countdown: string, t: (k: string) => string, hasDuty = true): Band {
+function bandFor(state: DutyStateName, countdown: string, t: (k: string) => string, hasDuty = true, nextDutyInfo?: any): Band {
   if (!hasDuty) {
     return { tone: 'off', icon: 'moon', text: t('duty.noDutyToday') || 'No Scheduled Duty Today' };
   }
@@ -54,7 +54,11 @@ function bandFor(state: DutyStateName, countdown: string, t: (k: string) => stri
     case 'absent':
       return { tone: 'danger', icon: 'close-circle', text: t('duty.notCheckedIn') || 'Check-in Window Closed' };
     case 'complete':
-      return { tone: 'off', icon: 'checkmark-done', text: t('duty.complete') || 'Shift Completed' };
+      return {
+        tone: 'on',
+        icon: 'checkmark-circle',
+        text: nextDutyInfo ? `✓ Shift Done · Next Duty ${nextDutyInfo.countdownText}` : (t('duty.complete') || "✓ Today's Duty Completed"),
+      };
     default:
       return { tone: 'off', icon: 'moon', text: t('duty.noDutyToday') || 'No Scheduled Duty Today' };
   }
@@ -244,6 +248,7 @@ export default function DutyHome() {
     timeline,
     alerts,
     booking,
+    upcomingBookings,
     contractOffers,
     activeContract,
     myContracts,
@@ -316,9 +321,84 @@ export default function DutyHome() {
     };
   }, [duty.state, booking?.bookingStatus, current?.rosterId, hydrated]);
 
+  const currentDateKey = selectedTestDate || (useDuty.getState().bundle?.todayKey) || new Date().toISOString().slice(0, 10);
+
+  // Next upcoming duty calculation (from upcomingBookings or next contract shift)
+  const nextBooking = upcomingBookings && upcomingBookings.length > 0 ? upcomingBookings[0] : null;
+  const rawContract = activeContract || (myContracts && myContracts.length > 0 ? myContracts[0] : null);
+  const totalContractDays = rawContract?.totalDays || 30;
+  const currentContractDay = (current as any)?.currentDayNumber || rawContract?.currentDayNumber || 1;
+
+  let nextDutyInfo: {
+    date: string;
+    startTime: string;
+    timeLabel: string;
+    title: string;
+    location: string;
+    countdownText: string;
+    hoursRemaining?: number;
+  } | null = null;
+
+  if (nextBooking) {
+    const bDate = nextBooking.date;
+    const bStart = nextBooking.startTime || '09:00';
+    const now = new Date();
+    const [cYear, cMonth, cDay] = (selectedTestDate || currentDateKey).split('-').map(Number);
+    const simNow = new Date(cYear, (cMonth || 1) - 1, cDay || 1, now.getHours(), now.getMinutes(), now.getSeconds());
+
+    const [tYear, tMonth, tDay] = bDate.split('-').map(Number);
+    const [tStartH, tStartM] = bStart.split(':').map(Number);
+    const bTarget = new Date(tYear, (tMonth || 1) - 1, tDay || 1, tStartH || 9, tStartM || 0, 0);
+
+    const diffMs = bTarget.getTime() - simNow.getTime();
+    const diffHours = Math.max(0, Math.floor(diffMs / 3600000));
+    const diffMins = Math.max(0, Math.floor((diffMs % 3600000) / 60000));
+
+    const countdownText = diffMs > 0
+      ? (diffHours < 24 ? `in ${diffHours}h ${diffMins}m` : `in ${Math.round(diffMs / 86400000)} days (${bDate})`)
+      : `Tomorrow (${bDate})`;
+
+    nextDutyInfo = {
+      date: bDate,
+      startTime: bStart,
+      timeLabel: nextBooking.timing || bStart,
+      title: nextBooking.serviceType || nextBooking.customerName || 'Security Service',
+      location: nextBooking.location || 'Scheduled Location',
+      countdownText,
+      hoursRemaining: diffHours,
+    };
+  } else if (rawContract && currentContractDay < totalContractDays) {
+    const [cYear, cMonth, cDay] = (selectedTestDate || currentDateKey).split('-').map(Number);
+    const base = new Date(cYear, (cMonth || 1) - 1, (cDay || 1) + 1);
+    const nextDateIso = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(base.getDate()).padStart(2, '0')}`;
+    const cStart = current?.start || '09:00';
+    const now = new Date();
+    const simNow = new Date(cYear, (cMonth || 1) - 1, cDay || 1, now.getHours(), now.getMinutes(), now.getSeconds());
+    const [tStartH, tStartM] = cStart.split(':').map(Number);
+    const cTarget = new Date(base.getFullYear(), base.getMonth(), base.getDate(), tStartH || 9, tStartM || 0, 0);
+
+    const diffMs = cTarget.getTime() - simNow.getTime();
+    const diffHours = Math.max(0, Math.floor(diffMs / 3600000));
+    const diffMins = Math.max(0, Math.floor((diffMs % 3600000) / 60000));
+
+    const countdownText = diffMs > 0
+      ? (diffHours < 24 ? `in ${diffHours}h ${diffMins}m` : `Tomorrow (${nextDateIso})`)
+      : `Tomorrow (${nextDateIso})`;
+
+    nextDutyInfo = {
+      date: nextDateIso,
+      startTime: cStart,
+      timeLabel: current?.timing || `${cStart} - 17:00`,
+      title: rawContract.client || current?.siteName || 'Contract Shift',
+      location: current?.site?.name || current?.siteName || 'Main Site',
+      countdownText,
+      hoursRemaining: diffHours,
+    };
+  }
+
   const countdown = formatCountdown(duty.countdownSec);
-  const hasDutyToday = !!(current || (booking && booking.bookingStatus !== 'COMPLETED'));
-  const band = bandFor(duty.state, countdown, t, hasDutyToday);
+  const hasDutyToday = (duty.state !== 'no_duty' && !!current) || (!!booking && (booking.bookingStatus === 'PENDING_ACCEPTANCE' || ['ACTIVE', 'CHECKOUT_INITIATED'].includes(booking.bookingStatus) || (booking.schedule?.date === currentDateKey && duty.state !== 'no_duty')));
+  const band = bandFor(duty.state, countdown, t, hasDutyToday, nextDutyInfo);
   const isOffer = booking?.bookingStatus === 'PENDING_ACCEPTANCE';
 
   const alertText = (a: DutyAlert) => {
@@ -387,8 +467,6 @@ export default function DutyHome() {
     );
   }
 
-  const currentDateKey = selectedTestDate || (useDuty.getState().bundle?.todayKey) || new Date().toISOString().slice(0, 10);
-  const rawContract = activeContract || (myContracts && myContracts.length > 0 ? myContracts[0] : null);
   const isContractFinished = rawContract
     ? (
         !!rawContract.isQuit ||
@@ -669,6 +747,7 @@ export default function DutyHome() {
           duty={duty}
           activeContract={effectiveContract}
           countdown={countdown}
+          nextDutyInfo={nextDutyInfo}
           isOffer={isOffer}
           booking={booking}
           online={online}
@@ -691,6 +770,34 @@ export default function DutyHome() {
           }}
           onGoOnline={goOnline}
         />
+
+        {/* ------------------------------------------------------------- */}
+        {/* SECTION: UPCOMING ACCEPTED ORDERS (Future On-Demand Bookings) */}
+        {/* ------------------------------------------------------------- */}
+        {upcomingBookings && upcomingBookings.length > 0 ? (
+          <>
+            <View style={[styles.sectionHeader, { marginTop: space.md }]}>
+              <View style={styles.sectionBadge}>
+                <Ionicons name="bag-check" size={16} color={colors.primary} />
+                <Text style={styles.sectionTitle}>
+                  UPCOMING ACCEPTED ORDERS ({upcomingBookings.length})
+                </Text>
+              </View>
+            </View>
+
+            {upcomingBookings.map((ub: any) => (
+              <UpcomingOrderCard
+                key={ub.bookingId}
+                booking={ub}
+                onSelectDate={async () => {
+                  if (ub.date) {
+                    await setTestDate(ub.date);
+                  }
+                }}
+              />
+            ))}
+          </>
+        ) : null}
 
         {/* ------------------------------------------------------------- */}
         {/* SECTION 2: MY CONTRACTS (Ongoing Contracts, Leave & Progress) */}
@@ -805,6 +912,7 @@ function TodayDutyCard({
   duty,
   activeContract,
   countdown,
+  nextDutyInfo,
   isOffer,
   booking,
   online,
@@ -817,6 +925,7 @@ function TodayDutyCard({
   duty: any;
   activeContract: ContractOffer | null;
   countdown: string;
+  nextDutyInfo?: any;
   isOffer: boolean;
   booking: any;
   online: boolean;
@@ -942,29 +1051,29 @@ function TodayDutyCard({
     const dayNum = (current as any).currentDayNumber || activeContract?.currentDayNumber || 1;
     const totalDays = (current as any).totalDays || activeContract?.totalDays || 30;
     const shiftTiming = current.timing || `${current.start} – ${current.end}`;
-    const isCompleted = duty.state === 'complete' || !!current.checkedOutAt;
-    const isOnDuty = duty.state === 'on_duty' || duty.state === 'check_out' || (!!current.checkedInAt && !current.checkedOutAt);
+    const isCompleted = duty.state === 'complete' || !!current.checkedOutAt || current.rosterStatus === 'Completed';
+    const isOnDuty = (duty.state === 'on_duty' || duty.state === 'check_out' || (!!current.checkedInAt && !current.checkedOutAt)) && !isCompleted;
 
     return (
-      <Card style={isOnDuty ? { borderColor: colors.onDuty, borderWidth: 1.5 } : isCompleted ? { borderColor: 'rgba(34,197,94,0.3)' } : undefined}>
+      <Card style={isOnDuty ? { borderColor: colors.onDuty, borderWidth: 1.5 } : isCompleted ? { borderColor: 'rgba(34,197,94,0.3)', backgroundColor: '#0f1712' } : undefined}>
         {/* Top Tag */}
         <View style={styles.rowBetween}>
           <View style={styles.rowGap}>
-            <Ionicons name="business" size={16} color={colors.primary} />
+            <Ionicons name="business" size={16} color={isCompleted ? colors.onDuty : colors.primary} />
             <Text style={{ fontSize: 15, fontWeight: '900', color: colors.text }}>
               {clientName}
             </Text>
           </View>
           <View style={[styles.badgePill, { backgroundColor: isCompleted ? colors.onDutyDim : isOnDuty ? colors.onDutyDim : 'rgba(245,198,35,0.1)' }]}>
             <Text style={[styles.badgePillText, { color: isCompleted ? colors.onDuty : isOnDuty ? colors.onDuty : colors.primary }]}>
-              {contractCode} · Day {dayNum} of {totalDays}
+              {isCompleted ? '✓ COMPLETED' : `${contractCode} · Day ${dayNum} of ${totalDays}`}
             </Text>
           </View>
         </View>
 
         {/* Site & Timing */}
         <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 4 }}>
-          {siteName} {current.site.address ? `· ${current.site.address}` : ''}
+          {siteName} {current.site?.address ? `· ${current.site.address}` : ''}
         </Text>
 
         <View style={[styles.metaRow, { marginTop: 6, marginBottom: 12 }]}>
@@ -976,23 +1085,47 @@ function TodayDutyCard({
         {isCompleted ? (
           <View style={styles.shiftCompletedBox}>
             <View style={styles.rowGap}>
-              <Ionicons name={dayNum >= totalDays ? 'trophy' : 'checkmark-circle'} size={24} color={colors.onDuty} />
+              <Ionicons name={totalDays > 1 && dayNum >= totalDays ? 'trophy' : 'checkmark-circle'} size={24} color={colors.onDuty} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 15, fontWeight: '900', color: colors.onDuty }}>
-                  {dayNum >= totalDays ? '🎉 All Contract Shifts Completed!' : "✓ Today's Duty Completed"}
+                  {totalDays > 1 && dayNum >= totalDays ? '🎉 All Contract Shifts Completed!' : "✓ Today's Duty Completed"}
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>
                   {current.checkedInAt ? istTime(current.checkedInAt) : current.start} → {current.checkedOutAt ? istTime(current.checkedOutAt) : current.end}
                 </Text>
               </View>
             </View>
+
+            {/* Next Duty Countdown Card if guard has accepted upcoming order/shift */}
+            {nextDutyInfo ? (
+              <View style={{ backgroundColor: 'rgba(245, 198, 35, 0.08)', borderColor: 'rgba(245, 198, 35, 0.25)', borderWidth: 1, borderRadius: radius.sm, padding: space.sm, gap: 5, marginTop: 6 }}>
+                <View style={styles.rowBetween}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="time" size={16} color={colors.warning} />
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: colors.warning }}>
+                      Next Duty: Starts {nextDutyInfo.countdownText}
+                    </Text>
+                  </View>
+                  <View style={[styles.badgePill, { backgroundColor: 'rgba(245, 198, 35, 0.2)', borderColor: 'rgba(245, 198, 35, 0.3)', borderWidth: 1 }]}>
+                    <Text style={[styles.badgePillText, { color: colors.primary }]}>{nextDutyInfo.timeLabel}</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600' }}>
+                  {nextDutyInfo.title} {nextDutyInfo.location ? `· ${nextDutyInfo.location}` : ''}
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                  Scheduled Date: <Text style={{ color: colors.text, fontWeight: '700' }}>{nextDutyInfo.date}</Text>
+                </Text>
+              </View>
+            ) : null}
+
             <View style={styles.divider} />
             <View style={styles.rowBetween}>
               <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>
-                Day {dayNum} / {totalDays} — Completed
+                {totalDays > 1 ? `Day ${dayNum} / ${totalDays} — Completed` : '1-Day Duty Completed'}
               </Text>
-              <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '700' }}>
-                {dayNum >= totalDays ? 'Total Days Reached' : 'Next Shift: Tomorrow'}
+              <Text style={{ fontSize: 11, color: nextDutyInfo ? colors.warning : colors.onDuty, fontWeight: '700' }}>
+                {nextDutyInfo ? `Next Duty: ${nextDutyInfo.date} (${nextDutyInfo.countdownText})` : (totalDays > 1 ? (dayNum >= totalDays ? 'Total Days Reached' : 'Next Shift: Tomorrow') : 'Duty Complete')}
               </Text>
             </View>
           </View>
@@ -1192,6 +1325,82 @@ function TodayDutyCard({
         onPress={onGoOnline}
         loading={busy}
       />
+    </Card>
+  );
+}
+
+/**
+ * Upcoming Accepted Orders Card (For Future Dates)
+ */
+function UpcomingOrderCard({
+  booking,
+  onSelectDate,
+}: {
+  booking: any;
+  onSelectDate: () => Promise<void>;
+}) {
+  const currentDateKey = useDuty.getState().selectedTestDate || (useDuty.getState().bundle?.todayKey) || new Date().toISOString().slice(0, 10);
+  const diffDays = Math.round((Date.parse(booking.date) - Date.parse(currentDateKey)) / 86_400_000);
+  const countdownLabel = diffDays === 1 ? 'Starts Tomorrow' : diffDays === 0 ? 'Starts Today' : diffDays > 1 ? `Starts in ${diffDays} days` : 'Scheduled';
+
+  return (
+    <Card style={{ backgroundColor: '#14171C', borderColor: 'rgba(245,198,35,0.3)', gap: 8, marginTop: 4 }}>
+      <View style={styles.rowBetween}>
+        <View style={[styles.rowGap, { flex: 1, marginRight: 8 }]}>
+          <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
+          <Text style={{ fontSize: 15, fontWeight: '900', color: colors.text }} numberOfLines={1}>
+            {booking.customerName || 'Client Order'}
+          </Text>
+        </View>
+        <View style={[styles.badgePill, { backgroundColor: 'rgba(245,198,35,0.15)', borderColor: 'rgba(245,198,35,0.3)', borderWidth: 1 }]}>
+          <Text style={[styles.badgePillText, { color: colors.primary }]}>
+            {booking.orderId ? `ORD-${booking.orderId.slice(-5)}` : 'ACCEPTED'}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={{ fontSize: 13, color: colors.textMuted }}>
+        {booking.serviceType} {booking.location ? `· ${booking.location}` : ''}
+      </Text>
+
+      {/* Schedule Info Box */}
+      <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: radius.sm, padding: space.sm, gap: 6 }}>
+        <View style={styles.rowBetween}>
+          <View style={styles.rowGap}>
+            <Ionicons name="calendar" size={14} color={colors.primary} />
+            <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>
+              {booking.date}
+            </Text>
+          </View>
+          <View style={styles.rowGap}>
+            <Ionicons name="time" size={14} color={colors.textMuted} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMuted }}>
+              {booking.timing || `${booking.startTime} – ${booking.endTime}`}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.rowBetween}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Ionicons name="hourglass-outline" size={12} color={colors.warning} />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.warning }}>
+              {countdownLabel}
+            </Text>
+          </View>
+          <Pressable
+            onPress={onSelectDate}
+            style={{ backgroundColor: 'rgba(245,198,35,0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary }}>
+              Switch Date →
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <Text style={{ fontSize: 11, color: colors.textFaint, fontStyle: 'italic' }}>
+        Check-in will be enabled on {booking.date} at {booking.startTime || 'duty start'}.
+      </Text>
     </Card>
   );
 }
