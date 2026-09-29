@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '@/i18n';
 import { useAuth } from '@/store/auth';
-import { colors, font, radius, space, touch } from '@/theme';
+import { colors, font, radius, space } from '@/theme';
 
 /**
  * Side menu: everything that has no place on Duty Home. Opened from the avatar on Duty Home.
@@ -14,9 +14,6 @@ import { colors, font, radius, space, touch } from '@/theme';
 
 type Item = { route: string; icon: keyof typeof Ionicons.glyphMap; key: string };
 
-// Every screen has exactly one way in. Not here, because they have their own place on Duty
-// Home: Patrol, Incident, Leave, Payslip, Documents, Help (the PRD 18.3 quick grid); Notices (the
-// bell); App health (the sync chip).
 const ACCOUNT: Item[] = [
   { route: '/profile', icon: 'person-outline', key: 'profile.title' },
   { route: '/roster', icon: 'calendar-outline', key: 'duty.roster' },
@@ -39,6 +36,10 @@ export function SideMenu({ open, onClose }: { open: boolean; onClose: () => void
   const guard = useAuth((s) => s.guard);
   const slide = useRef(new Animated.Value(0)).current;
   const [visible, setVisible] = useState(open);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const popupScale = useRef(new Animated.Value(0.9)).current;
+  const popupOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (open) setVisible(true);
@@ -47,31 +48,45 @@ export function SideMenu({ open, onClose }: { open: boolean; onClose: () => void
     });
   }, [open, slide]);
 
+  useEffect(() => {
+    if (showLogoutConfirm) {
+      popupScale.setValue(0.9);
+      popupOpacity.setValue(0);
+      Animated.parallel([
+        Animated.spring(popupScale, { toValue: 1, friction: 8, tension: 50, useNativeDriver: true }),
+        Animated.timing(popupOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [showLogoutConfirm, popupScale, popupOpacity]);
+
   const go = (route: string) => {
     onClose();
     router.push(route as any);
   };
 
-  const logout = () => {
-    onClose();
-    if (Platform.OS === 'web') {
-      const ok = typeof window !== 'undefined' ? window.confirm(`${t('profile.logoutTitle')}\n\n${t('profile.logoutBody')}`) : true;
-      if (ok) {
-        useAuth.getState().logout().then(() => router.replace('/login'));
-      }
-      return;
+  const handleLogoutPress = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  const handleCancelLogout = () => {
+    Animated.parallel([
+      Animated.timing(popupScale, { toValue: 0.9, duration: 150, useNativeDriver: true }),
+      Animated.timing(popupOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+    ]).start(() => {
+      setShowLogoutConfirm(false);
+    });
+  };
+
+  const handleConfirmLogout = async () => {
+    setLoggingOut(true);
+    try {
+      setShowLogoutConfirm(false);
+      onClose();
+      await useAuth.getState().logout();
+      router.replace('/login');
+    } finally {
+      setLoggingOut(false);
     }
-    Alert.alert(t('profile.logoutTitle'), t('profile.logoutBody'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('profile.logout'),
-        style: 'destructive',
-        onPress: async () => {
-          await useAuth.getState().logout();
-          router.replace('/login');
-        },
-      },
-    ]);
   };
 
   const row = (item: Item) => (
@@ -89,46 +104,107 @@ export function SideMenu({ open, onClose }: { open: boolean; onClose: () => void
   );
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <Animated.View style={[styles.backdrop, { opacity: slide.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={t('common.cancel')} />
-      </Animated.View>
+    <>
+      <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+        <Animated.View style={[styles.backdrop, { opacity: slide.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={t('common.cancel')} />
+        </Animated.View>
 
-      <Animated.View
-        style={[
-          styles.panel,
-          { width: WIDTH, paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg },
-          { transform: [{ translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [-WIDTH, 0] }) }] },
-        ]}
+        <Animated.View
+          style={[
+            styles.panel,
+            { width: WIDTH, paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg },
+            { transform: [{ translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [-WIDTH, 0] }) }] },
+          ]}
+        >
+          <View style={styles.head}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.name} numberOfLines={1}>
+                {guard?.name ?? 'Guard'}
+              </Text>
+              <Text style={styles.phone} numberOfLines={1}>
+                {guard?.phone ?? ''}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.divider} />
+
+          <ScrollView contentContainerStyle={{ paddingBottom: space.lg }} showsVerticalScrollIndicator={false}>
+            <Text style={styles.section}>{t('menu.account')}</Text>
+            {ACCOUNT.map(row)}
+            <Text style={styles.section}>{t('menu.more')}</Text>
+            {MORE.map(row)}
+
+            <Pressable onPress={handleLogoutPress} style={({ pressed }) => [styles.logout, pressed && { backgroundColor: 'rgba(239, 68, 68, 0.12)' }]}>
+              <Ionicons name="log-out-outline" size={22} color={colors.danger || '#ef4444'} />
+              <Text style={[styles.logoutText, { color: colors.danger || '#ef4444' }]}>{t('profile.logout')}</Text>
+            </Pressable>
+          </ScrollView>
+        </Animated.View>
+      </Modal>
+
+      {/* Modern Glassmorphic Logout Confirmation Modal */}
+      <Modal
+        visible={showLogoutConfirm}
+        transparent
+        animationType="none"
+        onRequestClose={handleCancelLogout}
+        statusBarTranslucent
       >
-        <View style={styles.head}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.name} numberOfLines={1}>
-              {guard?.name ?? 'Guard'}
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleCancelLogout} />
+          <Animated.View
+            style={[
+              styles.glassCard,
+              {
+                opacity: popupOpacity,
+                transform: [{ scale: popupScale }],
+              },
+            ]}
+          >
+            {/* Top Glow & Badge */}
+            <View style={styles.logoutIconBadge}>
+              <Ionicons name="log-out" size={26} color="#ef4444" />
+            </View>
+
+            {/* Title & Body */}
+            <Text style={styles.modalTitle}>{t('profile.logoutTitle') || 'Log out?'}</Text>
+            <Text style={styles.modalBody}>
+              {t('profile.logoutBody') || 'You will need an OTP to sign in again. You do not need to log out at the end of a shift.'}
             </Text>
-            <Text style={styles.phone} numberOfLines={1}>
-              {guard?.phone ?? ''}
-            </Text>
-          </View>
+
+            {/* Action Buttons */}
+            <View style={styles.buttonRow}>
+              <Pressable
+                onPress={handleCancelLogout}
+                disabled={loggingOut}
+                style={({ pressed }) => [
+                  styles.cancelBtn,
+                  pressed && { backgroundColor: 'rgba(255, 255, 255, 0.14)' },
+                ]}
+              >
+                <Text style={styles.cancelBtnText}>{t('common.cancel') || 'Cancel'}</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleConfirmLogout}
+                disabled={loggingOut}
+                style={({ pressed }) => [
+                  styles.confirmBtn,
+                  pressed && { backgroundColor: '#dc2626', opacity: 0.9 },
+                ]}
+              >
+                <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.confirmBtnText}>{loggingOut ? 'Logging out...' : (t('profile.logout') || 'Log out')}</Text>
+              </Pressable>
+            </View>
+          </Animated.View>
         </View>
-        <View style={styles.divider} />
-
-        <ScrollView contentContainerStyle={{ paddingBottom: space.lg }} showsVerticalScrollIndicator={false}>
-          <Text style={styles.section}>{t('menu.account')}</Text>
-          {ACCOUNT.map(row)}
-          <Text style={styles.section}>{t('menu.more')}</Text>
-          {MORE.map(row)}
-
-          <Pressable onPress={logout} style={({ pressed }) => [styles.logout, pressed && { backgroundColor: colors.bgElevated }]}>
-            <Ionicons name="log-out-outline" size={22} color={colors.text} />
-            <Text style={styles.logoutText}>{t('profile.logout')}</Text>
-          </Pressable>
-        </ScrollView>
-      </Animated.View>
-    </Modal>
+      </Modal>
+    </>
   );
 }
 
@@ -190,11 +266,103 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    backgroundColor: 'rgba(239, 68, 68, 0.06)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: space.sm,
   },
-  logoutText: { color: colors.text, fontSize: font.body + 1, fontWeight: '900' },
+  logoutText: { fontSize: font.body + 1, fontWeight: '900' },
+
+  // Custom Glassmorphic Popup Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.78)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: space.lg,
+  },
+  glassCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: 'rgba(20, 23, 28, 0.96)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1.5,
+    borderRadius: 24,
+    padding: space.xl,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.55,
+    shadowRadius: 24,
+    elevation: 20,
+  },
+  logoutIconBadge: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: 'rgba(239, 68, 68, 0.14)',
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: space.md,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: space.xs,
+    textAlign: 'center',
+    letterSpacing: -0.2,
+  },
+  modalBody: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: 'rgba(255, 255, 255, 0.65)',
+    textAlign: 'center',
+    marginBottom: space.xl,
+    paddingHorizontal: space.xs,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: space.sm,
+    width: '100%',
+  },
+  cancelBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#E2E8F0',
+  },
+  confirmBtn: {
+    flex: 1.2,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: '#ef4444',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#ef4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  confirmBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
 });
