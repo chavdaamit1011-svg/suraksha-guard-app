@@ -11,7 +11,7 @@ import { guardId, useAuth } from '@/store/auth';
 import { useDuty } from '@/store/duty';
 import { colors } from '@/theme';
 
-const BUNDLE_POLL_MS = 30_000; // the duty bundle changes on roster edits, not every second
+const BUNDLE_POLL_MS = 3_500; // Fast real-time live polling for instant orders, contracts, queries and notifications
 const TICK_MS = 1_000; // the countdown does
 
 export default function AppLayout() {

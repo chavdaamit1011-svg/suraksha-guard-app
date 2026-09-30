@@ -130,6 +130,8 @@ export default function Roster() {
       }
     });
     load();
+    const interval = setInterval(load, 4000);
+    return () => clearInterval(interval);
   }, [load]);
 
   const dayLabel = (date: string) => {

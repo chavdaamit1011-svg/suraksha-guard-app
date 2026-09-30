@@ -108,6 +108,7 @@ async function withPendingAttendance(cur: CurrentAssignment): Promise<CurrentAss
 let armedForRosterId = '';
 /** The wake list last armed; re-armed only when it changes. */
 let armedWakeKey = '';
+let inFlightRefresh = false;
 
 function getSimulatedNow(testDate?: string | null, serverIso?: string): Date {
   if (testDate && /^\d{4}-\d{2}-\d{2}$/.test(testDate)) {
@@ -170,7 +171,8 @@ export const useDuty = create<DutyStore>((set, get) => ({
 
   refresh: async () => {
     const id = gid(useAuth.getState().guard);
-    if (!id) return;
+    if (!id || inFlightRefresh) return;
+    inFlightRefresh = true;
 
     try {
       // Send what is queued first, so the bundle we fetch already reflects a check-in made
@@ -257,6 +259,8 @@ export const useDuty = create<DutyStore>((set, get) => ({
       set({ offline: !(e instanceof ApiError), lastError: e?.message ?? 'offline' });
       if (!get().bundle) await get().hydrateBundle();
       set({ duty: computeDuty(get().current, getSimulatedNow(get().selectedTestDate, get().bundle?.serverTime), get().booking) });
+    } finally {
+      inFlightRefresh = false;
     }
   },
 
