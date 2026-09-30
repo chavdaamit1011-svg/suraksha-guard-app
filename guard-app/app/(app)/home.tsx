@@ -397,9 +397,9 @@ export default function DutyHome() {
   }
 
   const countdown = formatCountdown(duty.countdownSec);
-  const hasDutyToday = (duty.state !== 'no_duty' && !!current) || (!!booking && (booking.bookingStatus === 'PENDING_ACCEPTANCE' || ['ACTIVE', 'CHECKOUT_INITIATED'].includes(booking.bookingStatus) || (booking.schedule?.date === currentDateKey && duty.state !== 'no_duty')));
+  const isOffer = Boolean(booking && (booking as any).isOffer !== false && booking.bookingStatus === 'PENDING_ACCEPTANCE');
+  const hasDutyToday = (duty.state !== 'no_duty' && !!current) || isOffer || (!!booking && (['ACTIVE', 'CHECKOUT_INITIATED'].includes(booking.bookingStatus) || (booking.schedule?.date === currentDateKey && duty.state !== 'no_duty')));
   const band = bandFor(duty.state, countdown, t, hasDutyToday, nextDutyInfo);
-  const isOffer = booking?.bookingStatus === 'PENDING_ACCEPTANCE';
 
   const alertText = (a: DutyAlert) => {
     const k = `alerts.${a.key}`;
@@ -424,10 +424,13 @@ export default function DutyHome() {
     setBusy(true);
     try {
       let coords: { lat: number; lng: number } | undefined;
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const pos = await quickFix({ accuracy: Location.Accuracy.Balanced, timeoutMs: 6_000 });
-        if (pos) coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      // Only request GPS location when going ONLINE
+      if (!online) {
+        const { status } = await Location.requestForegroundPermissionsAsync().catch(() => ({ status: 'denied' }));
+        if (status === 'granted') {
+          const pos = await quickFix({ accuracy: Location.Accuracy.Balanced, timeoutMs: 3_000 }).catch(() => null);
+          if (pos) coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        }
       }
       await setOnline(!online, coords);
     } catch (err: any) {
@@ -936,6 +939,7 @@ function TodayDutyCard({
 }) {
   const t = useT();
   const router = useRouter();
+  const [dismissedCancellationId, setDismissedCancellationId] = useState<string | null>(null);
 
   if (isOffer) {
     const schedDate = booking?.schedule?.date;
@@ -1281,10 +1285,9 @@ function TodayDutyCard({
     }
   }
 
-  const [dismissedCancellationId, setDismissedCancellationId] = useState<string | null>(null);
   const clientCancelled = (bundle as any)?.clientCancellationNotice;
   const currentViewedDate = useDuty.getState().selectedTestDate || bundle?.todayKey || new Date().toISOString().slice(0, 10);
-  const isCancelledForCurrentDate = clientCancelled?.scheduleDate ? clientCancelled.scheduleDate === currentViewedDate : true;
+  const isCancelledForCurrentDate = clientCancelled?.scheduleDate === currentViewedDate;
 
   let clientCancelledNotice = null;
   if (clientCancelled && isCancelledForCurrentDate && dismissedCancellationId !== clientCancelled.bookingId) {

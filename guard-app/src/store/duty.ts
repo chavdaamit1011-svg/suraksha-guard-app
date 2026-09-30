@@ -270,13 +270,17 @@ export const useDuty = create<DutyStore>((set, get) => ({
   setOnline: async (v, coords) => {
     const id = gid(useAuth.getState().guard);
     if (!id) return;
-    set({ online: v });
+    set((s) => ({
+      online: v,
+      bundle: s.bundle ? { ...s.bundle, guard: { ...s.bundle.guard, isOnline: v } } : null,
+    }));
     try {
       const res: any = await api.toggleOnline(id, v, coords);
-      if (res && typeof res.isOnline === 'boolean') {
-        set({ online: res.isOnline });
-      }
-      await get().refresh();
+      const isOnlineVal = res && typeof res.isOnline === 'boolean' ? res.isOnline : v;
+      set((s) => ({
+        online: isOnlineVal,
+        bundle: s.bundle ? { ...s.bundle, guard: { ...s.bundle.guard, isOnline: isOnlineVal } } : null,
+      }));
     } catch (e: any) {
       set({ lastError: e?.message ?? 'Could not update status' });
     }

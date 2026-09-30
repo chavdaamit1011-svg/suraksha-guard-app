@@ -31,30 +31,28 @@ export default function Profile() {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [reviewsExpanded, setReviewsExpanded] = useState(false);
 
-  useEffect(() => {
+  const loadProfile = async () => {
     if (!id) {
       setLoading(false);
       return;
     }
-    let active = true;
-    (async () => {
-      try {
-        const res = await api.getMe(id);
-        if (active && res.success) {
-          setRating(res.reviews?.averageRating ?? null);
-          setTotalReviews(res.reviews?.totalReviews ?? 0);
-          setReviews(res.reviews?.items ?? []);
-        }
-      } catch (err) {
-        console.error('Failed to load guard profile reviews:', err);
-      } finally {
-        if (active) setLoading(false);
+    try {
+      setLoading(true);
+      const res = await api.getMe(id);
+      if (res.success) {
+        setRating(res.reviews?.averageRating ?? null);
+        setTotalReviews(res.reviews?.totalReviews ?? 0);
+        setReviews(res.reviews?.items ?? []);
       }
-    })();
+    } catch (err) {
+      console.error('Failed to load guard profile reviews:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return () => {
-      active = false;
-    };
+  useEffect(() => {
+    loadProfile();
   }, [id]);
 
   return (
@@ -62,7 +60,9 @@ export default function Profile() {
       <View style={styles.head}>
         <Ionicons name="arrow-back" size={24} color={colors.text} onPress={() => goBack()} />
         <H2>{t('profile.title') || 'Profile'}</H2>
-        <View style={{ width: 24 }} />
+        <Pressable onPress={loadProfile} hitSlop={10}>
+          <Ionicons name="refresh" size={22} color={colors.primary} />
+        </Pressable>
       </View>
 
       <View style={styles.hero}>
