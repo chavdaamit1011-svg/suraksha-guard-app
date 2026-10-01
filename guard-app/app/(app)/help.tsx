@@ -47,7 +47,8 @@ export default function Help() {
   const router = useRouter();
   const params = useLocalSearchParams<{ category?: string; period?: string }>();
   const guard = useAuth((s) => s.guard);
-  const contacts = useDuty((s) => s.current?.site.escalationContacts ?? []);
+  const escalationContacts = useDuty((s) => s.current?.site.escalationContacts);
+  const contacts = escalationContacts ?? [];
   const helpline = useVersion((s) => s.helpline);
   const commandCenter = useVersion((s) => s.commandCenter);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);

@@ -1,10 +1,3 @@
-/**
- * Translation catalogue (PRD 18.2). Hindi is the default; English is the fallback.
- * The other 19 Indian languages are declared in LANGUAGES with endonyms so the picker
- * can render them; their string packs can be added here or delivered over-the-air later.
- * A missing key falls back to English (see i18n.ts).
- */
-
 export const en = {
   common: {
     appName: 'Suraksha Guard',
