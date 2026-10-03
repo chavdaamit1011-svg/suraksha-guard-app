@@ -10,6 +10,7 @@ import {
   TextInputProps,
   View,
   ViewStyle,
+  StyleProp,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, font, radius, space, touch } from '@/theme';
@@ -42,7 +43,7 @@ export function Body({ children, style }: { children: React.ReactNode; style?: a
   return <Text style={[styles.body, style]}>{children}</Text>;
 }
 
-export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
+export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
 

@@ -1101,4 +1101,48 @@ export const api = {
       body: { message, guardId, lang, history },
       timeoutMs: 45000,
     }),
+
+  /** Fetch issued assets, gear, and equipment with exact timestamps */
+  guardAssets: (guardId: string) =>
+    request<{
+      success: boolean;
+      assets: Array<{
+        issuanceId: string;
+        assetMongoId?: string;
+        assetId: string;
+        assetName: string;
+        category: string;
+        subcategory: string;
+        assetType: string;
+        unitOfMeasure: string;
+        quantity: number;
+        size: string;
+        assetTag: string;
+        serialNumber: string;
+        issueCondition: string;
+        issuedAt: string;
+        issuedBy: string;
+        expectedReturnDate: string | null;
+        returnedAt: string | null;
+        returnedQuantity: number;
+        returnCondition: string;
+        returnNote: string;
+        acknowledgementStatus: string;
+        note: string;
+        status: string;
+      }>;
+    }>('/api/guard/assets', { query: { guardId } }),
+
+  /** Return or handover an issued asset back to agency store */
+  returnAsset: (payload: {
+    guardId: string;
+    issuanceId?: string;
+    assetId?: string;
+    returnCondition?: string;
+    returnNote?: string;
+  }) =>
+    request<{ success: boolean; message: string; asset?: any }>('/api/guard/assets/return', {
+      method: 'POST',
+      body: payload,
+    }),
 };

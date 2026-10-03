@@ -195,7 +195,33 @@ export default function Profile() {
         ) : null}
       </View>
 
-      {/* ---------------- SECTION 3: EMPLOYMENT & PROFILE DETAILS ---------------- */}
+      {/* ---------------- SECTION 3: ISSUED GEAR & ASSETS ---------------- */}
+      <View style={{ marginTop: space.sm }}>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="cube-outline" size={18} color={colors.primary} />
+          <Text style={styles.sectionTitle}>Issued Equipment & Gear</Text>
+        </View>
+        <Pressable
+          onPress={() => router.push('/assets')}
+          style={({ pressed }) => [
+            styles.assetLinkCard,
+            pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+          ]}
+        >
+          <View style={styles.assetLinkIconWrap}>
+            <Ionicons name="shield-checkmark" size={22} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.assetLinkTitle}>My Issued Gear & Handover Log</Text>
+            <Text style={styles.assetLinkDesc}>
+              View assigned uniform, radios, torches & return gear to store
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+        </Pressable>
+      </View>
+
+      {/* ---------------- SECTION 4: EMPLOYMENT & PROFILE DETAILS ---------------- */}
       <View style={{ marginTop: space.sm, marginBottom: space.xl }}>
         <View style={styles.sectionHeaderRow}>
           <Ionicons name="person-outline" size={18} color={colors.primary} />
@@ -263,4 +289,34 @@ const styles = StyleSheet.create({
   reviewTextBox: { backgroundColor: 'rgba(245,198,35,0.06)', borderRadius: radius.sm, padding: 6, borderLeftWidth: 3, borderLeftColor: colors.primary, marginTop: 2 },
   reviewText: { fontSize: 12, color: colors.text, fontStyle: 'italic' },
   reviewDate: { fontSize: 10, color: colors.textFaint, textAlign: 'right', marginTop: 2 },
+  assetLinkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    backgroundColor: '#14171C',
+    borderWidth: 1,
+    borderColor: 'rgba(245,198,35,0.3)',
+    borderRadius: radius.md,
+    padding: space.md,
+    marginTop: 4,
+  },
+  assetLinkIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(245,198,35,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assetLinkTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  assetLinkDesc: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+    lineHeight: 15,
+  },
 });

@@ -517,11 +517,18 @@ export default function DutyHome() {
             ) : null}
           </Pressable>
           <Pressable
+            onPress={() => router.push('/assets')}
+            style={styles.bell}
+            accessibilityLabel="My Issued Gear & Equipment"
+          >
+            <Ionicons name="cube-outline" size={20} color={colors.primary} />
+          </Pressable>
+          <Pressable
             onPress={() => router.push('/notices')}
             style={styles.bell}
             accessibilityLabel={t('notices.title')}
           >
-            <Ionicons name={unreadNotices > 0 ? 'notifications' : 'notifications-outline'} size={26} color={colors.text} />
+            <Ionicons name={unreadNotices > 0 ? 'notifications' : 'notifications-outline'} size={24} color={colors.text} />
             {unreadNotices > 0 ? (
               <View style={styles.bellBadge}>
                 <Text style={styles.bellBadgeText}>{unreadNotices > 9 ? '9+' : unreadNotices}</Text>
