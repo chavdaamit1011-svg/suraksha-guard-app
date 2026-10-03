@@ -15,11 +15,20 @@ const extra = (Constants.expoConfig?.extra ?? {}) as Extra;
  *   EXPO_PUBLIC_API_BASE_URL=http://192.168.1.5:4546 npx expo start
  * Production builds set nothing and fall through to app.json.
  */
+const isWebLocal =
+  typeof window !== 'undefined' &&
+  (window.location?.hostname === 'localhost' ||
+    window.location?.hostname === '127.0.0.1' ||
+    window.location?.hostname === '::1');
+
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL || extra.apiBaseUrl || 'https://guards.surakshaguards.in';
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  (isWebLocal ? 'http://localhost:4545' : (extra.apiBaseUrl || 'https://guards.surakshaguards.in'));
 
 /** Socket.io origin (same custom server as the API, wss upgraded by nginx). */
-export const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL || extra.socketUrl || API_BASE_URL;
+export const SOCKET_URL =
+  process.env.EXPO_PUBLIC_SOCKET_URL ||
+  (isWebLocal ? 'http://localhost:4545' : (extra.socketUrl || API_BASE_URL));
 
 /**
  * Attendance / duty tuning. These mirror PRD 18 defaults but are agency-configurable
