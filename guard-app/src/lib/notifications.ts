@@ -314,28 +314,66 @@ export async function armedWakeCount(): Promise<number> {
   return Object.keys(armed).length;
 }
 
+/** Cancel all previously armed shift reminders */
+export async function cancelAllShiftReminders(): Promise<void> {
+  if (!Notifications) return;
+  try {
+    const armedIds = await store.getJSON<string[]>(KEYS.armedShiftReminders, []);
+    if (armedIds && armedIds.length > 0) {
+      await Promise.all(
+        armedIds.map((id) => Notifications!.cancelScheduledNotificationAsync(id).catch(() => {}))
+      );
+      await store.setJSON(KEYS.armedShiftReminders, []);
+    }
+  } catch {}
+}
+
 /** Shift reminders at T−60 and T−15 (PRD 18.3 §12). Local, so they survive a dead network. */
 export async function armShiftReminders(startAt: string, siteName: string): Promise<void> {
   if (!Notifications) return;
   if (!(await ensureNotificationPermission())) return;
   await setupAndroidChannels();
+
+  // Cancel existing scheduled shift reminders to ensure no duplicate notifications
+  await cancelAllShiftReminders();
+
   const start = Date.parse(startAt);
+  if (isNaN(start)) return;
+
+  const now = Date.now();
+  // Don't schedule if shift already started or in past
+  if (start <= now) return;
+
+  // Don't schedule if shift is more than 24 hours away
+  if (start > now + 24 * 60 * 60 * 1000) return;
+
+  const newArmedIds: string[] = [];
+
   for (const minsBefore of [60, 15]) {
     const at = start - minsBefore * 60_000;
-    if (at <= Date.now() + 5_000) continue;
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `Duty in ${minsBefore} minutes`,
-        body: siteName ? `${siteName} — get ready to check in.` : 'Get ready to check in.',
-        data: { type: 'shift_reminder' },
-        ...(Platform.OS === 'android' ? { channelId: 'shift' } : {}),
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: new Date(at),
-        ...(Platform.OS === 'android' ? { channelId: 'shift' } : {}),
-      } as any,
-    }).catch(() => {});
+    // Don't schedule if trigger time has already passed
+    if (at <= now + 5_000) continue;
+
+    try {
+      const notifId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `Duty in ${minsBefore} minutes`,
+          body: siteName ? `${siteName} — get ready to check in.` : 'Get ready to check in for duty.',
+          data: { type: 'shift_reminder', startAt, siteName },
+          ...(Platform.OS === 'android' ? { channelId: 'shift' } : {}),
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: new Date(at),
+          ...(Platform.OS === 'android' ? { channelId: 'shift' } : {}),
+        } as any,
+      });
+      if (notifId) newArmedIds.push(notifId);
+    } catch {}
+  }
+
+  if (newArmedIds.length > 0) {
+    await store.setJSON(KEYS.armedShiftReminders, newArmedIds);
   }
 }
 

@@ -64,6 +64,7 @@ export const KEYS = {
   incidentDraft: 'sg.incidentDraft', // async: in-progress incident, survives an app kill
   ackedBriefings: 'sg.ackedBriefings', // async: siteId:version pairs the guard acknowledged
   armedWakeIds: 'sg.armedWakeIds', // async: wakeId → local notification id, for cancellation
+  armedShiftReminders: 'sg.armedShiftReminders', // async: shift reminder notification ids, for cancellation and deduplication
   lastSyncAt: 'sg.lastSyncAt', // async: last successful queue flush, shown in App health
   dutyTracking: 'sg.dutyTracking', // async: on-duty location service run (hard stop time)
 } as const;

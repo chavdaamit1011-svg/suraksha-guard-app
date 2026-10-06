@@ -3,7 +3,7 @@ import { api, ApiError, type CurrentAssignment, type DutyAlert, type DutyBundle,
 import { getDeviceId } from '@/lib/device';
 import { computeDuty, type LocalDuty } from '@/lib/duty';
 import { setDutyLocationSink } from '@/lib/dutyTracking';
-import { armShiftReminders, armWakeChecks } from '@/lib/notifications';
+import { armShiftReminders, armWakeChecks, cancelAllShiftReminders } from '@/lib/notifications';
 import { flush, failedEvents, pending as pendingEvents, pendingCount } from '@/lib/queue';
 import { pendingMediaCount } from '@/lib/media';
 import { emitLocation, joinDutyRoom } from '@/lib/socket';
@@ -230,15 +230,23 @@ export const useDuty = create<DutyStore>((set, get) => ({
         joinDutyRoom(bundle.booking.bookingId);
       }
 
-      // Arm the night's wake prompts and the shift reminders from the server's schedule. These
-      // are local alarms, so they still fire if the network dies afterwards. Shift reminders once
-      // per shift; wake prompts whenever the server's list changes (a prompt added, answered or
-      // suppressed by a patrol scan), which a once-per-shift arm used to miss until a restart.
+      // Arm or disarm shift reminders from the server's schedule
       const cur = bundle.current;
-      if (cur && cur.rosterId !== armedForRosterId) {
-        armedForRosterId = cur.rosterId;
-        if (!cur.checkedInAt) armShiftReminders(cur.startAt, cur.siteName).catch(() => {});
+      const isUpcoming = cur && cur.startAt && !cur.checkedInAt && (cur.duty?.state === 'upcoming' || !cur.duty);
+      if (isUpcoming) {
+        const rosterKey = `${cur.rosterId}_${cur.startAt}`;
+        if (rosterKey !== armedForRosterId) {
+          armedForRosterId = rosterKey;
+          armShiftReminders(cur.startAt, cur.siteName).catch(() => {});
+        }
+      } else {
+        // No upcoming duty or already checked in -> cancel any scheduled shift reminders
+        if (armedForRosterId) {
+          armedForRosterId = '';
+          cancelAllShiftReminders().catch(() => {});
+        }
       }
+
       const wakeKey = cur
         ? `${cur.rosterId}|${(cur.wakeChecks ?? []).map((w) => `${w.wakeId}:${w.status}:${w.dueAt}`).join(',')}`
         : '';
