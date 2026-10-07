@@ -50,9 +50,9 @@ function bandFor(state: DutyStateName, countdown: string, t: (k: string) => stri
     case 'upcoming':
       return { tone: 'warn', icon: 'time', text: `${t('duty.startsIn') || 'Starts in'} ${countdown}` };
     case 'late':
-      return { tone: 'danger', icon: 'alert-circle', text: t('duty.late') || 'Late for Duty' };
+      return { tone: 'warn', icon: 'log-in', text: 'Ready to Check In (Shift In Progress)' };
     case 'absent':
-      return { tone: 'danger', icon: 'close-circle', text: t('duty.notCheckedIn') || 'Check-in Window Closed' };
+      return { tone: 'warn', icon: 'log-in', text: 'Ready to Check In (Shift In Progress)' };
     case 'complete':
       return {
         tone: 'on',
@@ -1180,10 +1180,10 @@ function TodayDutyCard({
             ) : null}
 
             {duty.state === 'late' || duty.state === 'absent' ? (
-              <View style={styles.lateInfoBox}>
-                <Ionicons name="alert-circle" size={16} color={colors.danger} />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.danger, flex: 1 }}>
-                  Check-in window closed. Contact supervisor for override.
+              <View style={[styles.upcomingInfoBox, { backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.3)' }]}>
+                <Ionicons name="time" size={16} color={colors.warning} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.warning, flex: 1 }}>
+                  Shift is in progress. Tap Check In below to mark attendance.
                 </Text>
               </View>
             ) : null}

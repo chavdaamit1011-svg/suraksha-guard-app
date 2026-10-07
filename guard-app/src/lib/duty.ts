@@ -124,18 +124,19 @@ export function computeDuty(
     return { state: 'upcoming', countdownSec: Math.round((windowOpens - t) / 1000), canCheckIn: false, canCheckOut: false, lateByMin: 0, earlyOutReasonRequired: false };
   }
 
-  if (t > windowCloses) {
-    return { state: 'absent', countdownSec: null, canCheckIn: false, canCheckOut: false, lateByMin: 0, earlyOutReasonRequired: false };
+  // If the shift has completely elapsed past its end time without check-in
+  if (t > end) {
+    return { state: 'absent', countdownSec: null, canCheckIn: false, canCheckOut: false, lateByMin: Math.round((end - start) / MS_MIN), earlyOutReasonRequired: false };
   }
 
+  // Active shift window: guard can always check in while shift is in progress
+  const isLate = t > start + (p.lateGraceMin ?? 15) * MS_MIN;
   return {
-    state: t > absentAt ? 'absent' : t > start + p.lateGraceMin * MS_MIN ? 'late' : 'check_in',
+    state: isLate ? 'late' : 'check_in',
     countdownSec: t < start ? Math.round((start - t) / 1000) : null,
-    // Past the absent threshold the guard may still check in: nothing blocks duty
-    // (PRD 18.17.1 rule 12). The record simply carries the flag.
     canCheckIn: true,
     canCheckOut: false,
-    lateByMin: 0,
+    lateByMin: isLate ? Math.max(0, Math.round((t - start) / MS_MIN)) : 0,
     earlyOutReasonRequired: false,
   };
 }

@@ -276,7 +276,18 @@ export const useDuty = create<DutyStore>((set, get) => ({
     const cur = get().current;
     const b = get().booking;
     if (!cur && !b) return;
-    set({ duty: computeDuty(cur, getSimulatedNow(get().selectedTestDate, get().bundle?.serverTime), b) });
+    const newDuty = computeDuty(cur, getSimulatedNow(get().selectedTestDate, get().bundle?.serverTime), b);
+    const oldDuty = get().duty;
+    if (
+      !oldDuty ||
+      oldDuty.state !== newDuty.state ||
+      oldDuty.countdownSec !== newDuty.countdownSec ||
+      oldDuty.canCheckIn !== newDuty.canCheckIn ||
+      oldDuty.canCheckOut !== newDuty.canCheckOut ||
+      oldDuty.lateByMin !== newDuty.lateByMin
+    ) {
+      set({ duty: newDuty });
+    }
   },
 
   setOnline: async (v, coords) => {

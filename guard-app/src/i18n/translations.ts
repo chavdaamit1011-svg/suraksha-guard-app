@@ -95,7 +95,7 @@ export const en = {
     arrivalOtp: 'Ask the client for the arrival code',
     checkoutOtp: 'Ask the client for the check-out code',
     readyToCheckIn: 'Ready to check in',
-    notCheckedIn: 'You have not checked in',
+    notCheckedIn: 'Ready to check in (Shift in progress)',
     complete: 'Duty complete',
     next: 'Next duty',
     checkedInAt: 'Checked in at',
@@ -124,7 +124,7 @@ export const en = {
     documents_pending: 'Documents pending',
     police_verification: 'Police verification pending',
     notices: '{count} unread notice(s)',
-    not_checked_in: 'You have not checked in',
+    not_checked_in: 'Ready to Check In (Shift in progress)',
   },
   grid: {
     patrol: 'Patrol',
