@@ -271,3 +271,25 @@ export async function captureMedia(args: {
   }
   return null;
 }
+
+/**
+ * Resolve any relative or absolute media path into a fully qualified image URL that can be
+ * safely loaded by React Native <Image /> on both Mobile (iOS/Android) and Web.
+ */
+export function resolveMediaUrl(uri?: string | null): string | null {
+  if (!uri || typeof uri !== 'string' || !uri.trim()) return null;
+  const clean = uri.trim();
+  if (
+    clean.startsWith('http://') ||
+    clean.startsWith('https://') ||
+    clean.startsWith('data:') ||
+    clean.startsWith('file://') ||
+    clean.startsWith('blob:')
+  ) {
+    return clean;
+  }
+  if (clean.startsWith('/')) {
+    return `${API_BASE_URL}${clean}`;
+  }
+  return `${API_BASE_URL}/${clean}`;
+}

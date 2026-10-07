@@ -92,10 +92,11 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   refresh: async () => {
     const g = get().guard;
-    if (!g?._id) return;
+    const gid = guardId(g);
+    if (!gid) return;
     try {
-      const res = await api.me(g._id);
-      if (res.guard && get().guard === g) {
+      const res = await api.me(gid);
+      if (res.guard) {
         const merged = { ...g, ...res.guard };
         await secure.set(KEYS.guard, JSON.stringify(merged));
         set({ guard: merged });

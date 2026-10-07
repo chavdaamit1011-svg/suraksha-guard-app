@@ -23,6 +23,7 @@ import { UpdateNotice } from '@/components/UpdateNotice';
 import { PING_INTERVAL_SEC } from '@/config';
 import { useT } from '@/i18n';
 import { api, type CurrentAssignment, type DutyAlert, type DutyStateName, type TimelineItem, type ContractOffer } from '@/lib/api';
+import { resolveMediaUrl } from '@/lib/media';
 import { startDutyTracking, stopDutyTracking } from '@/lib/dutyTracking';
 import { quickFix } from '@/lib/location';
 import { formatCountdown, istTime } from '@/lib/duty';
@@ -290,8 +291,13 @@ export default function DutyHome() {
   const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
   const [selfieUploading, setSelfieUploading] = useState(false);
   const [selfieCapturing, setSelfieCapturing] = useState(false);
+  const [headerImageError, setHeaderImageError] = useState(false);
 
-  const photoUri = guard?.profilePhoto || guard?.selfieUrl || guard?.docPhoto;
+  const resolvedPhoto = resolveMediaUrl(guard?.profilePhoto || guard?.selfieUrl || guard?.docPhoto);
+
+  useEffect(() => {
+    setHeaderImageError(false);
+  }, [guard?._id, guard?.profilePhoto, guard?.selfieUrl]);
 
   const openSelfieCamera = () => {
     setSelfieModalOpen(true);
@@ -573,10 +579,17 @@ export default function DutyHome() {
         {/* Header with Avatar Drawer trigger */}
         <View style={styles.header}>
           <Pressable onPress={() => setMenuOpen(true)} style={styles.avatar} accessibilityLabel={t('menu.open')}>
-            {photoUri ? (
-              <Image source={{ uri: photoUri }} style={styles.avatarImg} resizeMode="cover" />
+            {resolvedPhoto && !headerImageError ? (
+              <Image
+                source={{ uri: resolvedPhoto }}
+                style={styles.avatarImg}
+                resizeMode="cover"
+                onError={() => setHeaderImageError(true)}
+              />
             ) : (
-              <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+              <View style={styles.initialsBox}>
+                <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+              </View>
             )}
           </Pressable>
           <View style={{ flex: 1 }}>
@@ -745,7 +758,7 @@ export default function DutyHome() {
         ) : null}
 
         {/* 📸 First-Time Profile Selfie Prompt Card */}
-        {!photoUri ? (
+        {!resolvedPhoto ? (
           <Card style={styles.profileSelfiePromptCard}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
               <View style={styles.profileSelfiePromptIconWrap}>
@@ -2652,14 +2665,21 @@ const styles = StyleSheet.create({
     width: touch.minTap,
     height: touch.minTap,
     borderRadius: touch.minTap / 2,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: '#1C2028',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   avatarImg: { width: touch.minTap, height: touch.minTap, borderRadius: touch.minTap / 2 },
+  initialsBox: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 198, 35, 0.15)',
+  },
   avatarText: { color: colors.primary, fontWeight: '900', fontSize: font.h3 },
   headerName: { color: colors.text, fontSize: font.h3 + 1, fontWeight: '900' },
   profileSelfiePromptCard: {

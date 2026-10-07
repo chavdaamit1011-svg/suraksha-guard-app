@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '@/i18n';
+import { resolveMediaUrl } from '@/lib/media';
 import { useAuth } from '@/store/auth';
 import { colors, font, radius, space } from '@/theme';
 
@@ -40,24 +41,25 @@ export function SideMenu({ open, onClose }: { open: boolean; onClose: () => void
   const [loggingOut, setLoggingOut] = useState(false);
   const popupScale = useRef(new Animated.Value(0.9)).current;
   const popupOpacity = useRef(new Animated.Value(0)).current;
+  const useNative = Platform.OS !== 'web';
 
   useEffect(() => {
     if (open) setVisible(true);
-    Animated.timing(slide, { toValue: open ? 1 : 0, duration: 220, useNativeDriver: true }).start(() => {
+    Animated.timing(slide, { toValue: open ? 1 : 0, duration: 220, useNativeDriver: useNative }).start(() => {
       if (!open) setVisible(false);
     });
-  }, [open, slide]);
+  }, [open, slide, useNative]);
 
   useEffect(() => {
     if (showLogoutConfirm) {
       popupScale.setValue(0.9);
       popupOpacity.setValue(0);
       Animated.parallel([
-        Animated.spring(popupScale, { toValue: 1, friction: 8, tension: 50, useNativeDriver: true }),
-        Animated.timing(popupOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+        Animated.spring(popupScale, { toValue: 1, friction: 8, tension: 50, useNativeDriver: useNative }),
+        Animated.timing(popupOpacity, { toValue: 1, duration: 180, useNativeDriver: useNative }),
       ]).start();
     }
-  }, [showLogoutConfirm, popupScale, popupOpacity]);
+  }, [showLogoutConfirm, popupScale, popupOpacity, useNative]);
 
   const go = (route: string) => {
     onClose();
@@ -89,7 +91,13 @@ export function SideMenu({ open, onClose }: { open: boolean; onClose: () => void
     }
   };
 
-  const photoUri = guard?.profilePhoto || guard?.selfieUrl || guard?.docPhoto;
+  const resolvedPhoto = resolveMediaUrl(guard?.profilePhoto || guard?.selfieUrl || guard?.docPhoto);
+  const [imageError, setImageError] = useState(false);
+
+  // Reset image error if guard changes
+  useEffect(() => {
+    setImageError(false);
+  }, [guard?._id, guard?.profilePhoto, guard?.selfieUrl]);
 
   const row = (item: Item) => (
     <Pressable
@@ -120,13 +128,20 @@ export function SideMenu({ open, onClose }: { open: boolean; onClose: () => void
           ]}
         >
           <View style={styles.head}>
-            <View style={styles.avatar}>
-              {photoUri ? (
-                <Image source={{ uri: photoUri }} style={styles.avatarImg} resizeMode="cover" />
+            <Pressable onPress={() => go('/profile')} style={styles.avatar} accessibilityLabel="Open Profile">
+              {resolvedPhoto && !imageError ? (
+                <Image
+                  source={{ uri: resolvedPhoto }}
+                  style={styles.avatarImg}
+                  resizeMode="cover"
+                  onError={() => setImageError(true)}
+                />
               ) : (
-                <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+                <View style={styles.initialsBox}>
+                  <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+                </View>
               )}
-            </View>
+            </Pressable>
             <View style={{ flex: 1 }}>
               <Text style={styles.name} numberOfLines={1}>
                 {guard?.name ?? 'Guard'}
@@ -228,18 +243,30 @@ const styles = StyleSheet.create({
   },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.lg, paddingVertical: space.md },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#1C2028',
+    borderWidth: 2,
+    borderColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
   },
-  avatarImg: { width: 56, height: 56, borderRadius: 28 },
-  avatarText: { color: colors.primary, fontWeight: '900', fontSize: font.h2 },
+  avatarImg: { width: 60, height: 60, borderRadius: 30 },
+  initialsBox: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 198, 35, 0.15)',
+  },
+  avatarText: { color: colors.primary, fontWeight: '900', fontSize: 24 },
   name: { color: colors.text, fontSize: font.h3, fontWeight: '900' },
   phone: { color: colors.textMuted, fontSize: font.label, marginTop: 2 },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: space.md },

@@ -19,6 +19,7 @@ import {
 import { Button, Card, H1, H2, Muted, Screen } from '@/components/ui';
 import { useT } from '@/i18n';
 import { api } from '@/lib/api';
+import { resolveMediaUrl } from '@/lib/media';
 import { guardId, useAuth } from '@/store/auth';
 import { colors, font, radius, space } from '@/theme';
 
@@ -53,8 +54,13 @@ export default function Profile() {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  const [profileImageError, setProfileImageError] = useState(false);
 
-  const photoUri = guard?.profilePhoto || guard?.selfieUrl || guard?.docPhoto;
+  const resolvedPhoto = resolveMediaUrl(guard?.profilePhoto || guard?.selfieUrl || guard?.docPhoto);
+
+  useEffect(() => {
+    setProfileImageError(false);
+  }, [guard?._id, guard?.profilePhoto, guard?.selfieUrl]);
 
   const loadProfile = async () => {
     if (!id) {
@@ -152,10 +158,17 @@ export default function Profile() {
       <View style={styles.hero}>
         <Pressable onPress={openCamera} style={styles.avatarWrap} accessibilityLabel="Change Profile Photo">
           <View style={styles.avatar}>
-            {photoUri ? (
-              <Image source={{ uri: photoUri }} style={styles.avatarImg} resizeMode="cover" />
+            {resolvedPhoto && !profileImageError ? (
+              <Image
+                source={{ uri: resolvedPhoto }}
+                style={styles.avatarImg}
+                resizeMode="cover"
+                onError={() => setProfileImageError(true)}
+              />
             ) : (
-              <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+              <View style={styles.initialsBox}>
+                <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+              </View>
             )}
           </View>
           <View style={styles.cameraIconBadge}>
@@ -171,7 +184,7 @@ export default function Profile() {
         <Pressable onPress={openCamera} style={styles.takePhotoBtn}>
           <Ionicons name="camera-outline" size={16} color={colors.primary} />
           <Text style={styles.takePhotoBtnText}>
-            {photoUri ? 'Retake Official Selfie' : 'Take Official Profile Selfie'}
+            {resolvedPhoto ? 'Retake Official Selfie' : 'Take Official Profile Selfie'}
           </Text>
         </Pressable>
       </View>
@@ -401,7 +414,7 @@ const styles = StyleSheet.create({
     width: 92,
     height: 92,
     borderRadius: 46,
-    backgroundColor: colors.card,
+    backgroundColor: '#1C2028',
     borderWidth: 2.5,
     borderColor: colors.primary,
     alignItems: 'center',
@@ -409,6 +422,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: 92, height: 92, borderRadius: 46 },
+  initialsBox: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 198, 35, 0.15)',
+  },
   avatarText: { color: colors.primary, fontWeight: '900', fontSize: font.h1 },
   cameraIconBadge: {
     position: 'absolute',

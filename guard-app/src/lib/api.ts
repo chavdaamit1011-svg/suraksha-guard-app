@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '@/config';
 import { authHeader, ensureFreshSession, handleUnauthorized } from '@/lib/session';
+export { resolveMediaUrl } from '@/lib/media';
 
 export class ApiError extends Error {
   status: number;
