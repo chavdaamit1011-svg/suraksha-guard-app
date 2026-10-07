@@ -1,9 +1,22 @@
 import { goBack } from '@/lib/navigation';
 import { Ionicons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Card, H2, Screen } from '@/components/ui';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  Platform,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { Button, Card, H1, H2, Muted, Screen } from '@/components/ui';
 import { useT } from '@/i18n';
 import { api } from '@/lib/api';
 import { guardId, useAuth } from '@/store/auth';
@@ -31,6 +44,18 @@ export default function Profile() {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [reviewsExpanded, setReviewsExpanded] = useState(false);
 
+  // Profile Selfie State
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+
+  const photoUri = guard?.profilePhoto || guard?.selfieUrl || guard?.docPhoto;
+
   const loadProfile = async () => {
     if (!id) {
       setLoading(false);
@@ -55,6 +80,65 @@ export default function Profile() {
     loadProfile();
   }, [id]);
 
+  const openCamera = async () => {
+    setCameraOpen(true);
+    setCameraReady(false);
+    setCameraError('');
+    setPreviewUri(null);
+    if (!permission?.granted) {
+      void requestPermission().catch(() =>
+        setCameraError('Could not open the camera. Check camera permission.')
+      );
+    }
+  };
+
+  const capturePhoto = async () => {
+    if (!cameraReady || capturing) return;
+    setCapturing(true);
+    setCameraError('');
+    try {
+      const shot = await cameraRef.current?.takePictureAsync({ quality: 0.65, skipProcessing: true });
+      if (!shot?.uri) throw new Error('Camera did not return a photo. Please try again.');
+      const manipulated = await ImageManipulator.manipulateAsync(
+        shot.uri,
+        [{ resize: { width: 720 } }],
+        { compress: 0.65, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+      if (!manipulated.base64) throw new Error('Could not process photo.');
+      setPreviewUri(`data:image/jpeg;base64,${manipulated.base64}`);
+    } catch (err: any) {
+      setCameraError(err.message || 'Could not capture photo.');
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const saveProfilePhoto = async () => {
+    if (!previewUri || !id) return;
+    setUploading(true);
+    try {
+      const res = await api.uploadProfilePhoto(id, previewUri);
+      if (res.success && res.profilePhoto) {
+        const updatedGuard = {
+          ...guard!,
+          profilePhoto: res.profilePhoto,
+          selfieUrl: res.profilePhoto,
+          docPhoto: res.profilePhoto,
+        };
+        await useAuth.getState().setGuard(updatedGuard);
+        setCameraOpen(false);
+        setPreviewUri(null);
+        Alert.alert('Profile Photo Updated', 'Your official profile selfie has been saved and will be shown to clients.');
+      } else {
+        throw new Error((res as any)?.message || 'Upload failed');
+      }
+    } catch (err: any) {
+      Alert.alert('Upload Error', err?.message || 'Failed to save profile photo');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <Screen>
       <View style={styles.head}>
@@ -66,15 +150,30 @@ export default function Profile() {
       </View>
 
       <View style={styles.hero}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
-        </View>
+        <Pressable onPress={openCamera} style={styles.avatarWrap} accessibilityLabel="Change Profile Photo">
+          <View style={styles.avatar}>
+            {photoUri ? (
+              <Image source={{ uri: photoUri }} style={styles.avatarImg} resizeMode="cover" />
+            ) : (
+              <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+            )}
+          </View>
+          <View style={styles.cameraIconBadge}>
+            <Ionicons name="camera" size={16} color="#0B0D0F" />
+          </View>
+        </Pressable>
         <View style={{ alignItems: 'center', gap: 2 }}>
           <H2>{guard?.name ?? 'Guard'}</H2>
           <Text style={{ fontSize: 13, color: colors.textMuted }}>
             {guard?.type ?? 'Security Guard'} · {guard?.agencyName || guard?.branch || 'Suraksha'}
           </Text>
         </View>
+        <Pressable onPress={openCamera} style={styles.takePhotoBtn}>
+          <Ionicons name="camera-outline" size={16} color={colors.primary} />
+          <Text style={styles.takePhotoBtnText}>
+            {photoUri ? 'Retake Official Selfie' : 'Take Official Profile Selfie'}
+          </Text>
+        </Pressable>
       </View>
 
       {/* ---------------- SECTION 1: RATING & PERFORMANCE ---------------- */}
@@ -236,6 +335,50 @@ export default function Profile() {
           {guard?.empId ? <Row icon="id-card" label="Employee ID" value={guard.empId} /> : null}
         </Card>
       </View>
+
+      {/* Profile Selfie Capture Modal */}
+      <Modal visible={cameraOpen} animationType="slide" onRequestClose={() => { if (!capturing && !uploading) setCameraOpen(false); }}>
+        <Screen>
+          <H1>Official Profile Selfie</H1>
+          <Muted>Look directly at the front camera. This photo is set as your official profile picture and displayed to clients when you are assigned.</Muted>
+          {cameraError ? <Text style={{ color: colors.danger, fontWeight: '700' }}>{cameraError}</Text> : null}
+
+          {previewUri ? (
+            <View style={{ gap: space.md }}>
+              <Image source={{ uri: previewUri }} style={styles.cameraPreview} resizeMode="contain" />
+              <Button label="Save as Profile Photo" onPress={saveProfilePhoto} loading={uploading} variant="success" />
+              <Button label="Retake photo" variant="ghost" disabled={uploading} onPress={() => { setPreviewUri(null); setCameraReady(false); }} />
+            </View>
+          ) : cameraOpen && permission?.granted ? (
+            <View style={{ gap: space.md }}>
+              <View style={styles.cameraPreviewWrap}>
+                <CameraView
+                  ref={cameraRef}
+                  style={styles.cameraPreview}
+                  facing="front"
+                  onCameraReady={() => setCameraReady(true)}
+                  onMountError={() => {
+                    setCameraReady(false);
+                    setCameraError('Camera could not start. Please check camera permissions and retry.');
+                  }}
+                />
+                <View style={styles.cameraOval} pointerEvents="none" />
+              </View>
+              <Button label="Capture Selfie" onPress={capturePhoto} loading={capturing} disabled={!cameraReady || capturing} />
+            </View>
+          ) : (
+            <View style={{ gap: space.md, paddingVertical: space.xl }}>
+              <Muted>Allow camera access to capture your official profile photo.</Muted>
+              <Button label="Grant Camera Permission" onPress={() => {
+                if (Platform.OS !== 'web' && permission?.canAskAgain === false) void Linking.openSettings();
+                else void requestPermission().catch(() => setCameraError('Could not request camera permission.'));
+              }} />
+            </View>
+          )}
+
+          <Button label="Cancel" variant="ghost" disabled={capturing || uploading} onPress={() => setCameraOpen(false)} />
+        </Screen>
+      </Modal>
     </Screen>
   );
 }
@@ -253,8 +396,68 @@ function Row({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; lab
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.sm },
   hero: { alignItems: 'center', gap: space.sm, marginBottom: space.md },
-  avatar: { width: 84, height: 84, borderRadius: 42, backgroundColor: colors.card, borderWidth: 2, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  avatarWrap: { position: 'relative' },
+  avatar: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: colors.card,
+    borderWidth: 2.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: { width: 92, height: 92, borderRadius: 46 },
   avatarText: { color: colors.primary, fontWeight: '900', fontSize: font.h1 },
+  cameraIconBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#0B0D0F',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  takePhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(245,198,35,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,198,35,0.3)',
+    marginTop: 2,
+  },
+  takePhotoBtnText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  cameraPreviewWrap: { position: 'relative', width: '100%', height: 380, borderRadius: radius.md, overflow: 'hidden' },
+  cameraPreview: { width: '100%', height: 380, borderRadius: radius.md, backgroundColor: colors.card },
+  cameraOval: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 40,
+    width: 220,
+    height: 300,
+    borderRadius: 150,
+    borderWidth: 3,
+    borderColor: colors.primary,
+    opacity: 0.85,
+  },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' },
   rowLabel: { color: colors.textMuted, fontSize: font.body - 1, flex: 1 },
   rowValue: { color: colors.text, fontSize: font.body - 1, fontWeight: '800', flexShrink: 1, textAlign: 'right' },

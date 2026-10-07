@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '@/i18n';
 import { useAuth } from '@/store/auth';
@@ -89,6 +89,8 @@ export function SideMenu({ open, onClose }: { open: boolean; onClose: () => void
     }
   };
 
+  const photoUri = guard?.profilePhoto || guard?.selfieUrl || guard?.docPhoto;
+
   const row = (item: Item) => (
     <Pressable
       key={item.route}
@@ -119,7 +121,11 @@ export function SideMenu({ open, onClose }: { open: boolean; onClose: () => void
         >
           <View style={styles.head}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+              {photoUri ? (
+                <Image source={{ uri: photoUri }} style={styles.avatarImg} resizeMode="cover" />
+              ) : (
+                <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.name} numberOfLines={1}>
@@ -230,7 +236,9 @@ const styles = StyleSheet.create({
     borderColor: colors.borderStrong,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  avatarImg: { width: 56, height: 56, borderRadius: 28 },
   avatarText: { color: colors.primary, fontWeight: '900', fontSize: font.h2 },
   name: { color: colors.text, fontSize: font.h3, fontWeight: '900' },
   phone: { color: colors.textMuted, fontSize: font.label, marginTop: 2 },

@@ -1,10 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Image,
+  Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,16 +17,16 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Body, Button, Card, H2, Muted, Screen, StatusBand } from '@/components/ui';
+import { Body, Button, Card, H1, H2, Muted, Screen, StatusBand } from '@/components/ui';
 import { SideMenu } from '@/components/SideMenu';
 import { UpdateNotice } from '@/components/UpdateNotice';
 import { PING_INTERVAL_SEC } from '@/config';
 import { useT } from '@/i18n';
-import type { CurrentAssignment, DutyAlert, DutyStateName, TimelineItem, ContractOffer } from '@/lib/api';
+import { api, type CurrentAssignment, type DutyAlert, type DutyStateName, type TimelineItem, type ContractOffer } from '@/lib/api';
 import { startDutyTracking, stopDutyTracking } from '@/lib/dutyTracking';
 import { quickFix } from '@/lib/location';
 import { formatCountdown, istTime } from '@/lib/duty';
-import { useAuth } from '@/store/auth';
+import { guardId, useAuth } from '@/store/auth';
 import { useDuty } from '@/store/duty';
 import { colors, font, radius, space, touch } from '@/theme';
 
@@ -276,6 +281,78 @@ export default function DutyHome() {
   const [leaveContractModalOpen, setLeaveContractModalOpen] = useState<ContractOffer | null>(null);
   const [dayLeaveModalOpen, setDayLeaveModalOpen] = useState<ContractOffer | null>(null);
 
+  // Profile Selfie State
+  const [selfieModalOpen, setSelfieModalOpen] = useState(false);
+  const [selfiePermission, requestSelfiePermission] = useCameraPermissions();
+  const selfieCamRef = useRef<CameraView>(null);
+  const [selfieCamReady, setSelfieCamReady] = useState(false);
+  const [selfieCamError, setSelfieCamError] = useState('');
+  const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
+  const [selfieUploading, setSelfieUploading] = useState(false);
+  const [selfieCapturing, setSelfieCapturing] = useState(false);
+
+  const photoUri = guard?.profilePhoto || guard?.selfieUrl || guard?.docPhoto;
+
+  const openSelfieCamera = () => {
+    setSelfieModalOpen(true);
+    setSelfieCamReady(false);
+    setSelfieCamError('');
+    setSelfiePreview(null);
+    if (!selfiePermission?.granted) {
+      void requestSelfiePermission().catch(() =>
+        setSelfieCamError('Could not open camera. Check permissions.')
+      );
+    }
+  };
+
+  const captureSelfie = async () => {
+    if (!selfieCamReady || selfieCapturing) return;
+    setSelfieCapturing(true);
+    setSelfieCamError('');
+    try {
+      const shot = await selfieCamRef.current?.takePictureAsync({ quality: 0.65, skipProcessing: true });
+      if (!shot?.uri) throw new Error('Camera did not return a photo.');
+      const manipulated = await ImageManipulator.manipulateAsync(
+        shot.uri,
+        [{ resize: { width: 720 } }],
+        { compress: 0.65, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+      if (!manipulated.base64) throw new Error('Could not process photo.');
+      setSelfiePreview(`data:image/jpeg;base64,${manipulated.base64}`);
+    } catch (err: any) {
+      setSelfieCamError(err.message || 'Could not capture selfie.');
+    } finally {
+      setSelfieCapturing(false);
+    }
+  };
+
+  const saveSelfiePhoto = async () => {
+    const gId = guardId(guard);
+    if (!selfiePreview || !gId) return;
+    setSelfieUploading(true);
+    try {
+      const res = await api.uploadProfilePhoto(gId, selfiePreview);
+      if (res.success && res.profilePhoto) {
+        const updatedGuard = {
+          ...guard!,
+          profilePhoto: res.profilePhoto,
+          selfieUrl: res.profilePhoto,
+          docPhoto: res.profilePhoto,
+        };
+        await useAuth.getState().setGuard(updatedGuard);
+        setSelfieModalOpen(false);
+        setSelfiePreview(null);
+        Alert.alert('Profile Photo Set!', 'Your live selfie is now active as your official profile photo.');
+      } else {
+        throw new Error((res as any)?.message || 'Upload failed');
+      }
+    } catch (err: any) {
+      Alert.alert('Upload Error', err?.message || 'Failed to save profile photo');
+    } finally {
+      setSelfieUploading(false);
+    }
+  };
+
   const unreadNotices = alerts.find((a: DutyAlert) => a.key === 'notices')?.count ?? 0;
   const watch = useRef<Location.LocationSubscription | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -496,7 +573,11 @@ export default function DutyHome() {
         {/* Header with Avatar Drawer trigger */}
         <View style={styles.header}>
           <Pressable onPress={() => setMenuOpen(true)} style={styles.avatar} accessibilityLabel={t('menu.open')}>
-            <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+            {photoUri ? (
+              <Image source={{ uri: photoUri }} style={styles.avatarImg} resizeMode="cover" />
+            ) : (
+              <Text style={styles.avatarText}>{(guard?.name ?? 'G').slice(0, 1).toUpperCase()}</Text>
+            )}
           </Pressable>
           <View style={{ flex: 1 }}>
             <Muted>{guard?.city ?? ''}</Muted>
@@ -661,6 +742,30 @@ export default function DutyHome() {
                 : undefined
             }
           />
+        ) : null}
+
+        {/* 📸 First-Time Profile Selfie Prompt Card */}
+        {!photoUri ? (
+          <Card style={styles.profileSelfiePromptCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+              <View style={styles.profileSelfiePromptIconWrap}>
+                <Ionicons name="camera" size={24} color="#0B0D0F" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.profileSelfiePromptTitle}>Set Up Official Profile Selfie</Text>
+                <Text style={styles.profileSelfiePromptSubtitle}>
+                  Clients will see your official live photo when you are assigned to a duty or shift. Take your first selfie to activate it!
+                </Text>
+              </View>
+            </View>
+            <Button
+              label="Take Profile Selfie"
+              variant="primary"
+              size="small"
+              icon={<Ionicons name="camera-outline" size={18} color="#0B0D0F" />}
+              onPress={openSelfieCamera}
+            />
+          </Card>
         ) : null}
 
         <UpdateNotice />
@@ -908,6 +1013,50 @@ export default function DutyHome() {
           onClose={() => setCalendarOpen(false)}
         />
       ) : null}
+
+      {/* Profile Selfie Capture Modal */}
+      <Modal visible={selfieModalOpen} animationType="slide" onRequestClose={() => { if (!selfieCapturing && !selfieUploading) setSelfieModalOpen(false); }}>
+        <Screen>
+          <H1>Official Profile Selfie</H1>
+          <Muted>Look directly at the front camera. This first selfie becomes your official profile photo shown to clients upon assignment.</Muted>
+          {selfieCamError ? <Text style={{ color: colors.danger, fontWeight: '700' }}>{selfieCamError}</Text> : null}
+
+          {selfiePreview ? (
+            <View style={{ gap: space.md }}>
+              <Image source={{ uri: selfiePreview }} style={styles.cameraPreview} resizeMode="contain" />
+              <Button label="Save as Profile Photo" onPress={saveSelfiePhoto} loading={selfieUploading} variant="success" />
+              <Button label="Retake photo" variant="ghost" disabled={selfieUploading} onPress={() => { setSelfiePreview(null); setSelfieCamReady(false); }} />
+            </View>
+          ) : selfieModalOpen && selfiePermission?.granted ? (
+            <View style={{ gap: space.md }}>
+              <View style={styles.cameraPreviewWrap}>
+                <CameraView
+                  ref={selfieCamRef}
+                  style={styles.cameraPreview}
+                  facing="front"
+                  onCameraReady={() => setSelfieCamReady(true)}
+                  onMountError={() => {
+                    setSelfieCamReady(false);
+                    setSelfieCamError('Camera could not start. Please check permissions.');
+                  }}
+                />
+                <View style={styles.cameraOval} pointerEvents="none" />
+              </View>
+              <Button label="Capture Selfie" onPress={captureSelfie} loading={selfieCapturing} disabled={!selfieCamReady || selfieCapturing} />
+            </View>
+          ) : (
+            <View style={{ gap: space.md, paddingVertical: space.xl }}>
+              <Muted>Allow camera access to capture your official profile photo.</Muted>
+              <Button label="Grant Camera Permission" onPress={() => {
+                if (Platform.OS !== 'web' && selfiePermission?.canAskAgain === false) void Linking.openSettings();
+                else void requestSelfiePermission().catch(() => setSelfieCamError('Could not request camera permission.'));
+              }} />
+            </View>
+          )}
+
+          <Button label="Cancel" variant="ghost" disabled={selfieCapturing || selfieUploading} onPress={() => setSelfieModalOpen(false)} />
+        </Screen>
+      </Modal>
 
       <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
     </>
@@ -2508,9 +2657,52 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  avatarImg: { width: touch.minTap, height: touch.minTap, borderRadius: touch.minTap / 2 },
   avatarText: { color: colors.primary, fontWeight: '900', fontSize: font.h3 },
   headerName: { color: colors.text, fontSize: font.h3 + 1, fontWeight: '900' },
+  profileSelfiePromptCard: {
+    backgroundColor: 'rgba(245,198,35,0.06)',
+    borderColor: 'rgba(245,198,35,0.35)',
+    borderWidth: 1.5,
+    borderRadius: radius.lg,
+    padding: space.md,
+    gap: space.sm,
+    marginVertical: space.xs,
+  },
+  profileSelfiePromptIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileSelfiePromptTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  profileSelfiePromptSubtitle: {
+    fontSize: 11,
+    color: colors.textMuted,
+    lineHeight: 15,
+    marginTop: 2,
+  },
+  cameraPreviewWrap: { position: 'relative', width: '100%', height: 380, borderRadius: radius.md, overflow: 'hidden' },
+  cameraPreview: { width: '100%', height: 380, borderRadius: radius.md, backgroundColor: colors.card },
+  cameraOval: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 40,
+    width: 220,
+    height: 300,
+    borderRadius: 150,
+    borderWidth: 3,
+    borderColor: colors.primary,
+    opacity: 0.85,
+  },
   bell: {
     width: touch.minTap,
     height: touch.minTap,

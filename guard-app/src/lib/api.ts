@@ -705,6 +705,12 @@ export const api = {
       { method: 'POST', body: payload }
     ),
 
+  uploadProfilePhoto: (guardId: string, photoBase64: string) =>
+    request<{ success: boolean; profilePhoto: string; selfieUrl: string; guard: any }>(
+      '/api/guard/profile-photo',
+      { method: 'POST', body: { guardId, photoBase64 } }
+    ),
+
   me: (guardId: string) =>
     request<{ success: boolean; guard: any; earnings?: any; bookings?: any[] }>('/api/guard/me', {
       query: { guardId },
