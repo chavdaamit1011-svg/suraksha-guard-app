@@ -74,6 +74,13 @@ export default function Profile() {
         setRating(res.reviews?.averageRating ?? null);
         setTotalReviews(res.reviews?.totalReviews ?? 0);
         setReviews(res.reviews?.items ?? []);
+        if (res.guard || res.profile) {
+          const freshGuard = res.guard || res.profile;
+          await useAuth.getState().setGuard({
+            ...(guard || {} as any),
+            ...freshGuard,
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to load guard profile reviews:', err);
@@ -340,11 +347,15 @@ export default function Profile() {
           <Text style={styles.sectionTitle}>Details</Text>
         </View>
         <Card>
-          <Row icon="call" label={t('profile.phone') || 'Phone'} value={guard?.phone ?? '—'} />
-          <Row icon="location" label={t('profile.city') || 'City'} value={guard?.city ?? '—'} />
-          <Row icon="shield" label={t('profile.type') || 'Guard type'} value={guard?.type ?? '—'} />
-          <Row icon="business" label={t('profile.agency') || 'Agency'} value={guard?.agencyName ?? '—'} />
-          <Row icon="cash" label={t('profile.wage') || 'Wage'} value={guard?.wage ?? '—'} />
+          <Row icon="call" label={t('profile.phone') || 'Phone'} value={guard?.phone || '—'} />
+          <Row icon="location" label={t('profile.city') || 'City'} value={guard?.city || '—'} />
+          <Row icon="shield" label={t('profile.type') || 'Guard type'} value={guard?.type || '—'} />
+          <Row
+            icon="business"
+            label={t('profile.agency') || 'Agency'}
+            value={guard?.agencyName || guard?.agency || (guard as any)?.claimedByAgency || 'Awaiting Agency Assignment'}
+          />
+          <Row icon="cash" label={t('profile.wage') || 'Wage'} value={guard?.wage || '—'} />
           {guard?.empId ? <Row icon="id-card" label="Employee ID" value={guard.empId} /> : null}
         </Card>
       </View>
@@ -454,7 +465,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: radius.full,
+    borderRadius: radius.pill,
     backgroundColor: 'rgba(245,198,35,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(245,198,35,0.3)',

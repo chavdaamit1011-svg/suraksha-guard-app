@@ -167,7 +167,7 @@ export function SideMenu({ open, onClose }: { open: boolean; onClose: () => void
         </Animated.View>
       </Modal>
 
-      {/* Modern Glassmorphic Logout Confirmation Modal */}
+      {/* App Portal Style Confirmation Modal */}
       <Modal
         visible={showLogoutConfirm}
         transparent
@@ -179,47 +179,65 @@ export function SideMenu({ open, onClose }: { open: boolean; onClose: () => void
           <Pressable style={StyleSheet.absoluteFill} onPress={handleCancelLogout} />
           <Animated.View
             style={[
-              styles.glassCard,
+              styles.portalDialogCard,
               {
                 opacity: popupOpacity,
                 transform: [{ scale: popupScale }],
               },
             ]}
           >
-            {/* Top Glow & Badge */}
-            <View style={styles.logoutIconBadge}>
-              <Ionicons name="log-out" size={26} color="#ef4444" />
+            {/* Close 'X' Button at top-right */}
+            <Pressable
+              onPress={handleCancelLogout}
+              hitSlop={10}
+              style={({ pressed }) => [styles.dialogCloseBtn, pressed && { opacity: 0.6 }]}
+            >
+              <Ionicons name="close" size={18} color="rgba(255, 255, 255, 0.4)" />
+            </Pressable>
+
+            {/* Header: Icon + Title + Platform Subtitle */}
+            <View style={styles.dialogHeaderRow}>
+              <View style={styles.dialogIconBox}>
+                <Ionicons name="alert-circle-outline" size={24} color="#F87171" />
+              </View>
+              <View style={styles.dialogHeaderTextCol}>
+                <Text style={styles.dialogTitle}>{t('profile.logoutTitle') || 'Log out?'}</Text>
+                <Text style={styles.dialogSubtitle}>Suraksha Security Platform</Text>
+              </View>
             </View>
 
-            {/* Title & Body */}
-            <Text style={styles.modalTitle}>{t('profile.logoutTitle') || 'Log out?'}</Text>
-            <Text style={styles.modalBody}>
-              {t('profile.logoutBody') || 'You will need an OTP to sign in again. You do not need to log out at the end of a shift.'}
-            </Text>
+            {/* Inner Message Box matching #242529 card */}
+            <View style={styles.dialogMessageBox}>
+              <Text style={styles.dialogMessageText}>
+                {t('profile.logoutBody') || 'You will need an OTP to sign in again. You do not need to log out at the end of a shift.'}
+              </Text>
+            </View>
 
-            {/* Action Buttons */}
-            <View style={styles.buttonRow}>
+            {/* Actions Footer */}
+            <View style={styles.dialogFooterRow}>
               <Pressable
                 onPress={handleCancelLogout}
                 disabled={loggingOut}
                 style={({ pressed }) => [
-                  styles.cancelBtn,
-                  pressed && { backgroundColor: 'rgba(255, 255, 255, 0.14)' },
+                  styles.dialogCancelBtn,
+                  pressed && { backgroundColor: 'rgba(255, 255, 255, 0.08)' },
                 ]}
               >
-                <Text style={styles.cancelBtnText}>{t('common.cancel') || 'Cancel'}</Text>
+                <Text style={styles.dialogCancelBtnText}>{t('common.cancel') || 'Cancel'}</Text>
               </Pressable>
 
               <Pressable
                 onPress={handleConfirmLogout}
                 disabled={loggingOut}
                 style={({ pressed }) => [
-                  styles.confirmBtn,
-                  pressed && { backgroundColor: '#dc2626', opacity: 0.9 },
+                  styles.dialogConfirmBtn,
+                  pressed && { opacity: 0.9 },
                 ]}
               >
-                <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
-                <Text style={styles.confirmBtnText}>{loggingOut ? 'Logging out...' : (t('profile.logout') || 'Log out')}</Text>
+                <Ionicons name="log-out-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.dialogConfirmBtnText}>
+                  {loggingOut ? 'Logging out...' : (t('profile.logout') || 'Log out')}
+                </Text>
               </Pressable>
             </View>
           </Animated.View>
@@ -310,93 +328,124 @@ const styles = StyleSheet.create({
   },
   logoutText: { fontSize: font.body + 1, fontWeight: '900' },
 
-  // Custom Glassmorphic Popup Styles
+  // App Portal Dialog Design Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.78)',
+    backgroundColor: 'rgba(0, 0, 0, 0.60)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: space.lg,
   },
-  glassCard: {
+  portalDialogCard: {
     width: '100%',
-    maxWidth: 360,
-    backgroundColor: 'rgba(20, 23, 28, 0.96)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderWidth: 1.5,
-    borderRadius: 24,
-    padding: space.xl,
-    alignItems: 'center',
+    maxWidth: 400,
+    backgroundColor: '#1E1F22',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 22,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.55,
-    shadowRadius: 24,
-    elevation: 20,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.5,
+    shadowRadius: 28,
+    elevation: 24,
+    position: 'relative',
   },
-  logoutIconBadge: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: 'rgba(239, 68, 68, 0.14)',
-    borderColor: 'rgba(239, 68, 68, 0.35)',
-    borderWidth: 1.5,
+  dialogCloseBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: space.md,
+    zIndex: 10,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: space.xs,
-    textAlign: 'center',
-    letterSpacing: -0.2,
-  },
-  modalBody: {
-    fontSize: 13,
-    lineHeight: 20,
-    color: 'rgba(255, 255, 255, 0.65)',
-    textAlign: 'center',
-    marginBottom: space.xl,
-    paddingHorizontal: space.xs,
-  },
-  buttonRow: {
+  dialogHeaderRow: {
     flexDirection: 'row',
-    gap: space.sm,
-    width: '100%',
+    alignItems: 'flex-start',
+    gap: 14,
+    marginBottom: 16,
+    paddingRight: 32,
   },
-  cancelBtn: {
-    flex: 1,
-    height: 46,
+  dialogIconBox: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(239, 68, 68, 0.10)',
+    borderColor: 'rgba(239, 68, 68, 0.30)',
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cancelBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#E2E8F0',
+  dialogHeaderTextCol: {
+    flex: 1,
+    paddingTop: 2,
   },
-  confirmBtn: {
-    flex: 1.2,
-    height: 46,
-    borderRadius: 12,
-    backgroundColor: '#ef4444',
+  dialogTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  dialogSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.40)',
+    marginTop: 2,
+  },
+  dialogMessageBox: {
+    borderRadius: 16,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+    borderWidth: 1,
+    backgroundColor: 'rgba(36, 37, 41, 0.70)',
+    padding: 16,
+    marginBottom: 16,
+  },
+  dialogMessageText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: 'rgba(255, 255, 255, 0.80)',
+  },
+  dialogFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dialogCancelBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dialogCancelBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.70)',
+  },
+  dialogConfirmBtn: {
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#DC2626',
     flexDirection: 'row',
     gap: 6,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#ef4444',
+    shadowColor: '#DC2626',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 4,
   },
-  confirmBtnText: {
-    fontSize: 14,
+  dialogConfirmBtnText: {
+    fontSize: 12.5,
     fontWeight: '800',
     color: '#FFFFFF',
   },
