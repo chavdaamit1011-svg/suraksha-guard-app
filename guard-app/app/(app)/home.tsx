@@ -20,6 +20,7 @@ import {
 import { Body, Button, Card, H1, H2, Muted, Screen, StatusBand } from '@/components/ui';
 import { SideMenu } from '@/components/SideMenu';
 import { UpdateNotice } from '@/components/UpdateNotice';
+import DutyRouteNavigationModal, { type DutyTargetLocation } from '@/components/DutyRouteNavigationModal';
 import { PING_INTERVAL_SEC } from '@/config';
 import { useT } from '@/i18n';
 import { api, type CurrentAssignment, type DutyAlert, type DutyStateName, type TimelineItem, type ContractOffer } from '@/lib/api';
@@ -281,6 +282,7 @@ export default function DutyHome() {
   const [selectedContractForModal, setSelectedContractForModal] = useState<ContractOffer | null>(null);
   const [leaveContractModalOpen, setLeaveContractModalOpen] = useState<ContractOffer | null>(null);
   const [dayLeaveModalOpen, setDayLeaveModalOpen] = useState<ContractOffer | null>(null);
+  const [navModalTarget, setNavModalTarget] = useState<DutyTargetLocation | null>(null);
 
   // Profile Selfie State
   const [selfieModalOpen, setSelfieModalOpen] = useState(false);
@@ -884,6 +886,24 @@ export default function DutyHome() {
             setBusy(true);
             try {
               await accept();
+              if (booking) {
+                setNavModalTarget({
+                  title: booking.customerName || 'Duty Location',
+                  clientName: booking.customerName || 'Client',
+                  clientPhone: booking.customerPhone,
+                  address: booking.location?.address || booking.location?.city || 'Duty Location',
+                  city: booking.location?.city,
+                  lat: booking.location?.lat,
+                  lng: booking.location?.lng,
+                  guardLat: (booking as any)?.assignedGuard?.lat || ((booking as any)?.assignedGuards && (booking as any).assignedGuards[0]?.lat) || null,
+                  guardLng: (booking as any)?.assignedGuard?.lng || ((booking as any)?.assignedGuards && (booking as any).assignedGuards[0]?.lng) || null,
+                  orderId: booking.bookingId || booking.orderId,
+                  bookingId: booking.bookingId,
+                  serviceType: booking.serviceType,
+                  timing: booking.schedule?.startTime ? `${booking.schedule.startTime} – ${booking.schedule.endTime || ''}` : undefined,
+                  instructions: booking.serviceRequirements?.specialInstructions,
+                });
+              }
             } finally {
               setBusy(false);
             }
@@ -897,6 +917,7 @@ export default function DutyHome() {
             }
           }}
           onGoOnline={goOnline}
+          onOpenRouteMap={(loc) => setNavModalTarget(loc)}
         />
 
         {/* ------------------------------------------------------------- */}
@@ -917,6 +938,7 @@ export default function DutyHome() {
               <UpcomingOrderCard
                 key={ub.bookingId}
                 booking={ub}
+                onOpenRouteMap={(loc) => setNavModalTarget(loc)}
                 onSelectDate={async () => {
                   if (ub.date) {
                     await setTestDate(ub.date);
@@ -1071,6 +1093,13 @@ export default function DutyHome() {
         </Screen>
       </Modal>
 
+      {/* Uber / Rapido Driver Route Navigation Modal */}
+      <DutyRouteNavigationModal
+        visible={!!navModalTarget}
+        onClose={() => setNavModalTarget(null)}
+        target={navModalTarget}
+      />
+
       <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
     </>
   );
@@ -1092,6 +1121,7 @@ function TodayDutyCard({
   onAccept,
   onReject,
   onGoOnline,
+  onOpenRouteMap,
 }: {
   current: CurrentAssignment | null;
   duty: any;
@@ -1105,6 +1135,7 @@ function TodayDutyCard({
   onAccept: () => Promise<void>;
   onReject: (reason?: string) => Promise<void>;
   onGoOnline: () => Promise<void>;
+  onOpenRouteMap?: (target: DutyTargetLocation) => void;
 }) {
   const t = useT();
   const router = useRouter();
@@ -1194,6 +1225,32 @@ function TodayDutyCard({
           ) : null}
         </View>
 
+        {/* Route Preview on Map */}
+        <Pressable
+          onPress={() => {
+            onOpenRouteMap?.({
+              title: booking?.customerName || 'Duty Location',
+              clientName: booking?.customerName || 'Client',
+              clientPhone: booking?.customerPhone,
+              address: booking?.location?.address ?? booking?.location?.city ?? 'Location not specified',
+              city: booking?.location?.city,
+              lat: booking?.location?.lat,
+              lng: booking?.location?.lng,
+              guardLat: booking?.assignedGuard?.lat || (booking?.assignedGuards && booking?.assignedGuards[0]?.lat) || null,
+              guardLng: booking?.assignedGuard?.lng || (booking?.assignedGuards && booking?.assignedGuards[0]?.lng) || null,
+              orderId: booking?.bookingId,
+              bookingId: booking?.bookingId,
+              serviceType: booking?.serviceType,
+              timing: timeDisplay || undefined,
+              instructions: specialInst,
+            });
+          }}
+          style={styles.previewRouteBtn}
+        >
+          <Ionicons name="map-outline" size={15} color={colors.primary} />
+          <Text style={styles.previewRouteBtnText}>View Location on Map</Text>
+        </Pressable>
+
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
           <View style={{ flex: 1 }}>
             <Button
@@ -1214,6 +1271,11 @@ function TodayDutyCard({
         </View>
       </Card>
     );
+  }
+
+  // Active on-demand booking (accepted by guard!)
+  if (booking && !isOffer) {
+    return <BookingCard booking={booking} onOpenRouteMap={onOpenRouteMap} />;
   }
 
   // Active roster / contract shift today
@@ -1248,6 +1310,38 @@ function TodayDutyCard({
         <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 4 }}>
           {siteName} {current.site?.address ? `· ${current.site.address}` : ''}
         </Text>
+
+        {/* Route Navigation Button (Uber / Rapido Style) */}
+        <Pressable
+          onPress={() => {
+            onOpenRouteMap?.({
+              title: siteName,
+              clientName: clientName,
+              clientPhone: (current as any).clientPhone || (current as any).supervisorPhone,
+              address: current.site?.address || siteName,
+              city: (current as any).site?.city,
+              lat: current.site?.lat,
+              lng: current.site?.lng,
+              guardLat: (current as any).site?.lat ? (current as any).site.lat - 0.0305 : null,
+              guardLng: (current as any).site?.lng ? (current as any).site.lng + 0.0050 : null,
+              orderId: current.rosterId,
+              serviceType: current.shiftType || 'Security Service',
+              timing: shiftTiming,
+            });
+          }}
+          style={styles.navigateRouteBtn}
+        >
+          <View style={styles.navigateRouteIconBadge}>
+            <Ionicons name="navigate" size={18} color="#0B0D0F" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.navigateRouteTitle}>View Route to Duty Site</Text>
+            <Text style={styles.navigateRouteSubtitle}>Live driving path, Distance & ETA</Text>
+          </View>
+          <View style={styles.navigateRouteArrow}>
+            <Ionicons name="map" size={16} color="#F5C623" />
+          </View>
+        </Pressable>
 
         <View style={[styles.metaRow, { marginTop: 6, marginBottom: 12 }]}>
           <Meta icon="time" text={shiftTiming} tone={colors.text} />
@@ -1516,9 +1610,11 @@ function TodayDutyCard({
 function UpcomingOrderCard({
   booking,
   onSelectDate,
+  onOpenRouteMap,
 }: {
   booking: any;
   onSelectDate: () => Promise<void>;
+  onOpenRouteMap?: (target: DutyTargetLocation) => void;
 }) {
   const currentDateKey = useDuty.getState().selectedTestDate || (useDuty.getState().bundle?.todayKey) || new Date().toISOString().slice(0, 10);
   const diffDays = Math.round((Date.parse(booking.date) - Date.parse(currentDateKey)) / 86_400_000);
@@ -1568,14 +1664,36 @@ function UpcomingOrderCard({
               {countdownLabel}
             </Text>
           </View>
-          <Pressable
-            onPress={onSelectDate}
-            style={{ backgroundColor: 'rgba(245,198,35,0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}
-          >
-            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary }}>
-              Switch Date →
-            </Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Pressable
+              onPress={() => {
+                onOpenRouteMap?.({
+                  title: booking.customerName || 'Upcoming Duty',
+                  clientName: booking.customerName || 'Client',
+                  clientPhone: booking.customerPhone,
+                  address: booking.location || 'Assigned Location',
+                  orderId: booking.orderId || booking.bookingId,
+                  bookingId: booking.bookingId,
+                  serviceType: booking.serviceType,
+                  timing: booking.timing || `${booking.startTime} – ${booking.endTime}`,
+                });
+              }}
+              style={{ backgroundColor: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.35)', borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+            >
+              <Ionicons name="navigate" size={12} color="#10B981" />
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#10B981' }}>
+                View Route
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={onSelectDate}
+              style={{ backgroundColor: 'rgba(245,198,35,0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary }}>
+                Switch Date →
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -2228,7 +2346,13 @@ function getHoursUntilShift(schedDate?: string, startTime?: string) {
   return (start.getTime() - Date.now()) / (1000 * 60 * 60);
 }
 
-function BookingCard({ booking }: { booking: any }) {
+function BookingCard({
+  booking,
+  onOpenRouteMap,
+}: {
+  booking: any;
+  onOpenRouteMap?: (target: DutyTargetLocation) => void;
+}) {
   const t = useT();
   const router = useRouter();
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -2292,6 +2416,40 @@ function BookingCard({ booking }: { booking: any }) {
         </View>
         <Body style={{ fontWeight: '900', fontSize: 16, marginTop: 4 }}>{booking.customerName || 'Client Booking'}</Body>
         <Muted style={{ marginTop: 2 }}>{address}</Muted>
+
+        {/* Route / Map Navigation Button (Uber / Rapido Style) */}
+        <Pressable
+          onPress={() => {
+            onOpenRouteMap?.({
+              title: booking.customerName || 'Client Location',
+              clientName: booking.customerName || 'Client',
+              clientPhone: booking.customerPhone,
+              address: address,
+              city: booking.location?.city,
+              lat: booking.location?.lat,
+              lng: booking.location?.lng,
+              guardLat: (booking as any)?.assignedGuard?.lat || ((booking as any)?.assignedGuards && (booking as any).assignedGuards[0]?.lat) || null,
+              guardLng: (booking as any)?.assignedGuard?.lng || ((booking as any)?.assignedGuards && (booking as any).assignedGuards[0]?.lng) || null,
+              orderId: booking.bookingId || booking.orderId,
+              bookingId: booking.bookingId,
+              serviceType: booking.serviceType,
+              timing: timeDisplay || undefined,
+              instructions: specialInst,
+            });
+          }}
+          style={styles.navigateRouteBtn}
+        >
+          <View style={styles.navigateRouteIconBadge}>
+            <Ionicons name="navigate" size={18} color="#0B0D0F" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.navigateRouteTitle}>View Route & Navigation</Text>
+            <Text style={styles.navigateRouteSubtitle}>Live driving path, Distance (KM) & ETA</Text>
+          </View>
+          <View style={styles.navigateRouteArrow}>
+            <Ionicons name="map" size={16} color="#F5C623" />
+          </View>
+        </Pressable>
 
         {/* Schedule & Requirements Breakdown */}
         <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: radius.sm, padding: space.sm, gap: 6, marginTop: 4, marginBottom: 4 }}>
@@ -3099,5 +3257,70 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: colors.text,
+  },
+  navigateRouteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#0F1E19',
+    borderColor: '#10B981',
+    borderWidth: 1.5,
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginVertical: 6,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  navigateRouteIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navigateRouteTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#34D399',
+    letterSpacing: 0.3,
+  },
+  navigateRouteSubtitle: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  navigateRouteArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(245, 198, 35, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 198, 35, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewRouteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(245, 198, 35, 0.12)',
+    borderColor: 'rgba(245, 198, 35, 0.35)',
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  previewRouteBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
   },
 });
