@@ -19,8 +19,18 @@ export default function Register() {
   const { phone, ticket } = useLocalSearchParams<{ phone: string; ticket?: string }>();
 
   const [name, setName] = useState('');
+  const [fatherName, setFatherName] = useState('');
   const [city, setCity] = useState('');
   const [address, setAddress] = useState('');
+  const [permanentAddress, setPermanentAddress] = useState('');
+  const [sameAddress, setSameAddress] = useState(true);
+  const [badgeNo, setBadgeNo] = useState('');
+  const [guardType, setGuardType] = useState('Gate Guard');
+  const [joiningDate, setJoiningDate] = useState(new Date().toISOString().split('T')[0]);
+  const [monthlyWage, setMonthlyWage] = useState('18500');
+  const [salaryDate, setSalaryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [armsAmmunition, setArmsAmmunition] = useState('None');
+  const [nationality, setNationality] = useState('Indian');
   const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [coords, setCoords] = useState<{ lat?: number; lng?: number }>({});
   const [fromGps, setFromGps] = useState(false);
@@ -125,6 +135,7 @@ export default function Register() {
     if (loading || picking) return;
     const errors: Record<string, string> = {};
     if (!name.trim()) errors.name = 'Full name is required.';
+    if (!fatherName.trim()) errors.fatherName = "Father's name is required (Gujarat Form VI Rule 11).";
     if (!city.trim()) errors.city = 'City is required.';
     if (!/^[2-9]\d{11}$/.test(aadhaarNumber)) errors.aadhaarNumber = 'Enter a valid 12-digit Aadhaar number.';
     if (!docAadhaar) errors.docAadhaar = 'Please upload your Aadhaar card photo.';
@@ -140,11 +151,26 @@ export default function Register() {
     setError('');
     setLoading(true);
     try {
+      const resolvedAddress = address.trim();
+      const resolvedPermAddress = sameAddress ? resolvedAddress : (permanentAddress.trim() || resolvedAddress);
+
       const regRes = await api.register({
         phone,
         name: name.trim(),
+        fatherName: fatherName.trim(),
         city: city.trim(),
-        address: address.trim(),
+        address: resolvedAddress,
+        presentAddress: resolvedAddress,
+        permanentAddress: resolvedPermAddress,
+        badgeNo: badgeNo.trim(),
+        guardType,
+        type: guardType,
+        joiningDate: joiningDate.trim(),
+        monthlyWage: Number(monthlyWage.replace(/\D/g, '')) || 18500,
+        wage: monthlyWage ? `₹${Number(monthlyWage.replace(/\D/g, '')).toLocaleString('en-IN')}` : '₹18,500',
+        salaryDate: salaryDate.trim(),
+        armsAmmunition,
+        nationality: nationality.trim() || 'Indian',
         aadhaarNumber,
         agencyId: '',
         registerTicket: ticket,
@@ -199,6 +225,44 @@ export default function Register() {
 
           <View style={{ gap: 4 }}>
             <Field
+              label="Father's name (Form VI) *"
+              value={fatherName}
+              onChangeText={(val) => {
+                setFatherName(val);
+                if (fieldErrors.fatherName) setFieldErrors(prev => ({ ...prev, fatherName: '' }));
+              }}
+              placeholder="Father's full name"
+              style={fieldErrors.fatherName ? { borderColor: colors.danger } : undefined}
+            />
+            {fieldErrors.fatherName ? (
+              <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '700' }}>{fieldErrors.fatherName}</Text>
+            ) : null}
+          </View>
+
+          {/* Designation / Role Selector (Form VI Col 2) */}
+          <View style={{ gap: space.xs }}>
+            <Text style={styles.fieldLabel}>Designation / Role (Form VI Col 2) *</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {['Gate Guard', 'Supervisor', 'Armed Guard', 'Bodyguard (PSO)', 'Patrol Guard', 'Bouncer'].map((role) => {
+                const selected = guardType === role;
+                return (
+                  <TouchableOpacity
+                    key={role}
+                    activeOpacity={0.7}
+                    onPress={() => setGuardType(role)}
+                    style={[styles.chip, selected && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipText, selected && styles.chipTextActive]}>
+                      {role}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={{ gap: 4 }}>
+            <Field
               label={t('register.city')}
               value={city}
               onChangeText={(val) => {
@@ -213,11 +277,124 @@ export default function Register() {
             ) : null}
           </View>
 
-          <Field label={t('register.address')} value={address} onChangeText={setAddress} placeholder="Address" multiline />
+          <Field
+            label="Present address & Phone (Form VI Col 4)"
+            value={address}
+            onChangeText={(val) => {
+              setAddress(val);
+              if (sameAddress) setPermanentAddress(val);
+            }}
+            placeholder="Present living address"
+            multiline
+          />
           {fromGps ? <Muted>{t('register.fromGps')}</Muted> : null}
 
+          {/* Permanent Address with Same-Address Toggle */}
+          <View style={{ gap: space.xs }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={styles.fieldLabel}>Permanent address (Form VI Col 6) *</Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => {
+                  const nextSame = !sameAddress;
+                  setSameAddress(nextSame);
+                  if (nextSame && address) setPermanentAddress(address);
+                }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 }}
+              >
+                <Ionicons
+                  name={sameAddress ? 'checkbox' : 'square-outline'}
+                  size={16}
+                  color={sameAddress ? colors.primary : colors.textMuted}
+                />
+                <Text style={{ color: sameAddress ? colors.primary : colors.textMuted, fontSize: 11, fontWeight: '600' }}>
+                  Same as present address
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Field
+              value={permanentAddress}
+              onChangeText={(val) => {
+                setPermanentAddress(val);
+                if (val !== address) setSameAddress(false);
+              }}
+              placeholder="Permanent native home town / village address"
+              multiline
+            />
+          </View>
+
+          {/* Joining Date & Badge No */}
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Date of joining (Col 5)"
+                value={joiningDate}
+                onChangeText={setJoiningDate}
+                placeholder="YYYY-MM-DD"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Badge No. / Emp ID (Col 8)"
+                value={badgeNo}
+                onChangeText={setBadgeNo}
+                placeholder="e.g. SEN-4521"
+              />
+            </View>
+          </View>
+
+          {/* Salary & Salary Effective Date */}
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Monthly Salary (₹) (Col 9)"
+                value={monthlyWage}
+                onChangeText={setMonthlyWage}
+                placeholder="18500"
+                keyboardType="number-pad"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Salary Date (Col 9)"
+                value={salaryDate}
+                onChangeText={setSalaryDate}
+                placeholder="YYYY-MM-DD"
+              />
+            </View>
+          </View>
+
+          {/* Arms / Ammunition Provided (Part IV Duty Register) */}
+          <View style={{ gap: space.xs }}>
+            <Text style={styles.fieldLabel}>Arms / Ammunition (Part IV Duty Register)</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {['None', '12 Bore DBBL', '0.32 Revolver/Pistol', 'Baton / Lathi', 'Licensed Firearm'].map((arm) => {
+                const selected = armsAmmunition === arm;
+                return (
+                  <TouchableOpacity
+                    key={arm}
+                    activeOpacity={0.7}
+                    onPress={() => setArmsAmmunition(arm)}
+                    style={[styles.chip, selected && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipText, selected && styles.chipTextActive]}>
+                      {arm}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          <Field
+            label="Nationality (Form VI Part I)"
+            value={nationality}
+            onChangeText={setNationality}
+            placeholder="Indian"
+          />
+
           {/* Document Uploads */}
-          <Text style={styles.sectionLabel}>DOCUMENTS</Text>
+          <Text style={styles.sectionLabel}>DOCUMENTS & KYC</Text>
 
           <View style={{ gap: 4 }}>
             <Field
@@ -389,4 +566,43 @@ const styles = StyleSheet.create({
   docLabel: { color: colors.text, fontWeight: '600', fontSize: font.label },
   docSub: { color: colors.textFaint, fontSize: font.tiny, marginTop: 2 },
   docThumb: { width: 48, height: 48, borderRadius: radius.sm },
+  fieldLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  chipTextActive: {
+    fontWeight: '700',
+    color: colors.onPrimary,
+  },
+  statutoryBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(245,198,35,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,198,35,0.25)',
+  },
 });

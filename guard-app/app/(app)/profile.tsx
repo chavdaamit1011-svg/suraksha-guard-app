@@ -348,6 +348,7 @@ export default function Profile() {
         </View>
         <Card>
           <Row icon="call" label={t('profile.phone') || 'Phone'} value={guard?.phone || '—'} />
+          {guard?.fatherName ? <Row icon="person" label="Father's Name" value={guard.fatherName} /> : null}
           <Row icon="location" label={t('profile.city') || 'City'} value={guard?.city || '—'} />
           <Row icon="shield" label={t('profile.type') || 'Guard type'} value={guard?.type || '—'} />
           <Row
@@ -355,8 +356,21 @@ export default function Profile() {
             label={t('profile.agency') || 'Agency'}
             value={guard?.agencyName || guard?.agency || (guard as any)?.claimedByAgency || 'Awaiting Agency Assignment'}
           />
-          <Row icon="cash" label={t('profile.wage') || 'Wage'} value={guard?.wage || '—'} />
-          {guard?.empId ? <Row icon="id-card" label="Employee ID" value={guard.empId} /> : null}
+          <Row icon="cash" label={t('profile.wage') || 'Wage'} value={guard?.wage ? (guard?.salaryDate ? `${guard.wage} (Eff: ${guard.salaryDate})` : guard.wage) : '—'} />
+          <Row icon="id-card" label="Badge No. / Emp ID" value={guard?.badgeNo || guard?.empId || '—'} />
+          {guard?.presentAddress || guard?.address ? (
+            <Row icon="home" label="Present Address" value={guard.presentAddress || guard.address} />
+          ) : null}
+          {guard?.permanentAddress ? (
+            <Row icon="navigate" label="Permanent Address" value={guard.permanentAddress} />
+          ) : null}
+          {guard?.joiningDate ? (
+            <Row icon="calendar" label="Date of Joining" value={guard.joiningDate} />
+          ) : null}
+          {guard?.armsAmmunition && guard.armsAmmunition !== 'None' ? (
+            <Row icon="shield-half" label="Arms / Ammunition" value={guard.armsAmmunition} />
+          ) : null}
+          <Row icon="flag" label="Nationality" value={guard?.nationality || 'Indian'} />
         </Card>
       </View>
 
