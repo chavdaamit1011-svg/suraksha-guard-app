@@ -1,9 +1,10 @@
 import NetInfo from '@react-native-community/netinfo';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { AppState, View } from 'react-native';
+import { AppState, Platform, View } from 'react-native';
 import { SosButton } from '@/components/SosButton';
 import { api } from '@/lib/api';
+import { API_BASE_URL } from '@/config';
 import { getLaunchNotificationData, onNotificationResponse } from '@/lib/notifications';
 import { flush } from '@/lib/queue';
 import { quickFix } from '@/lib/location';
@@ -96,12 +97,17 @@ export default function AppLayout() {
       useDuty.getState().hydrateBundle(); // instant render from cache, then revalidate
       refresh();
       refreshQueued();
-      // Probe GPS fix on app startup / resume so the ops radar instantly tracks the officer
+      // Auto go online and record real-time check-in on app open
       quickFix().then((pos) => {
         if (pos) {
           useDuty.getState().pushLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.heading ?? undefined);
+          useDuty.getState().setOnline(true, { lat: pos.coords.latitude, lng: pos.coords.longitude }).catch(() => {});
+        } else {
+          useDuty.getState().setOnline(true).catch(() => {});
         }
-      }).catch(() => {});
+      }).catch(() => {
+        useDuty.getState().setOnline(true).catch(() => {});
+      });
       poll.current ??= setInterval(refresh, BUNDLE_POLL_MS);
       ticker.current ??= setInterval(tick, TICK_MS);
     };
@@ -110,10 +116,43 @@ export default function AppLayout() {
       if (ticker.current) clearInterval(ticker.current);
       poll.current = null;
       ticker.current = null;
+      // In background/inactive tab: Keep polling at a relaxed heartbeat so the tab stays online!
+      // Do NOT check out while the tab/app is still open.
+      poll.current = setInterval(refresh, BUNDLE_POLL_MS * 2);
     };
 
     start();
     useAuth.getState().touch();
+
+    // On Web: Only check out when the browser tab/window is actually closed or destroyed
+    let removeUnload: (() => void) | null = null;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const handleTabClose = () => {
+        const id = guardId(useAuth.getState().guard);
+        if (id) {
+          const payload = JSON.stringify({ guardId: id, isOnline: false });
+          try {
+            if (navigator.sendBeacon) {
+              navigator.sendBeacon(`${API_BASE_URL}/api/guard/toggle-online`, payload);
+            } else {
+              fetch(`${API_BASE_URL}/api/guard/toggle-online`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload,
+                keepalive: true,
+              });
+            }
+          } catch (_) {}
+        }
+      };
+      window.addEventListener('beforeunload', handleTabClose);
+      window.addEventListener('pagehide', handleTabClose);
+      removeUnload = () => {
+        window.removeEventListener('beforeunload', handleTabClose);
+        window.removeEventListener('pagehide', handleTabClose);
+      };
+    }
+
     const sub = AppState.addEventListener('change', async (s) => {
       if (s === 'active') {
         const locked = await useAuth.getState().lockIfIdle();
@@ -129,7 +168,9 @@ export default function AppLayout() {
       }
     });
     return () => {
-      stop();
+      if (poll.current) clearInterval(poll.current);
+      if (ticker.current) clearInterval(ticker.current);
+      if (removeUnload) removeUnload();
       sub.remove();
     };
   }, [refresh, tick, refreshQueued, router]);
