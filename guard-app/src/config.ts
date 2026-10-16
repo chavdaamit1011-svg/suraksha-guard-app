@@ -51,4 +51,3 @@ export const PING_INTERVAL_SEC = {
   patrol: 30,
 } as const;
 
-export const OTP_DEMO_CODE = '123456'; // backend currently uses a dummy OTP (see backend memory)

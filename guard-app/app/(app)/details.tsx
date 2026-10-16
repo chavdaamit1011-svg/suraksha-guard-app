@@ -67,7 +67,9 @@ export default function Details() {
   const [docUri, setDocUri] = useState<string | null>(null);
   const [otpStage, setOtpStage] = useState(false);
   const [otp, setOtp] = useState('');
-  const [devCode, setDevCode] = useState('');
+  const [expiresAt, setExpiresAt] = useState(0);
+  const [resendAvailableAt, setResendAvailableAt] = useState(0);
+  const [now, setNow] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -95,13 +97,29 @@ export default function Details() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!otpStage) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [otpStage]);
+
+  const secondsRemaining = Math.max(0, Math.ceil((expiresAt - now) / 1000));
+  const resendRemainingSec = Math.max(0, Math.ceil((resendAvailableAt - now) / 1000));
+  const canResend = resendRemainingSec === 0;
+  const remainingMinutes = Math.floor(secondsRemaining / 60);
+  const remSec = secondsRemaining % 60;
+  const timeFormatted = `${String(remainingMinutes).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
+  const isExpired = secondsRemaining === 0 && expiresAt > 0;
+
   const openEditor = (field: ChangeField) => {
     setEditing(field);
     setForm({});
     setDocUri(null);
     setOtpStage(false);
     setOtp('');
-    setDevCode('');
+    setExpiresAt(0);
+    setResendAvailableAt(0);
+    setNow(0);
     setError('');
     setNotice('');
   };
@@ -137,7 +155,9 @@ export default function Details() {
   const sendOtp = async () => {
     try {
       const r = await api.sendOtp(guard?.phone ?? '');
-      if (__DEV__ && r.devCode) setDevCode(r.devCode);
+      setExpiresAt(r.expiresAt || (Date.now() + 180_000));
+      setResendAvailableAt(r.resendAvailableAt || (Date.now() + 30_000));
+      setNow(Date.now());
       setOtpStage(true);
     } catch (e: any) {
       setError(e?.message ?? t('details.err_network'));
@@ -155,6 +175,11 @@ export default function Details() {
       setBusy(true);
       await sendOtp();
       setBusy(false);
+      return;
+    }
+
+    if (otpStage && isExpired) {
+      setError(t('login.otpExpired') || 'OTP has expired. Please request a new OTP.');
       return;
     }
 
@@ -313,8 +338,27 @@ export default function Details() {
           <View style={{ gap: space.md }}>
             <Body>{t('details.otpSent', { phone: guard?.phone ?? '' })}</Body>
             <Field label={t('details.otp')} value={otp} onChangeText={setOtp} keyboardType="number-pad" maxLength={6} autoFocus />
-            {devCode ? <Muted>DEV: {devCode}</Muted> : null}
-            <Button label={t('details.resendOtp')} variant="ghost" size="small" onPress={sendOtp} />
+            {/* 3-Minute Live Countdown Timer */}
+            {isExpired ? (
+              <View style={styles.expiredBadge}>
+                <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
+                <Text style={styles.expiredText}>{t('login.otpExpired') || 'OTP has expired. Please request a new OTP.'}</Text>
+              </View>
+            ) : (
+              <View style={styles.timerBadge}>
+                <Ionicons name="time-outline" size={14} color={colors.primary} />
+                <Text style={styles.timerText}>
+                  {t('login.expiresIn') || 'OTP expires in'} {timeFormatted} min
+                </Text>
+              </View>
+            )}
+            <Button
+              label={canResend ? t('details.resendOtp') : `${t('login.resendIn') || 'Resend in'} ${resendRemainingSec}s`}
+              variant="ghost"
+              size="small"
+              onPress={sendOtp}
+              disabled={!canResend || busy}
+            />
           </View>
         )}
 
@@ -325,7 +369,7 @@ export default function Details() {
           size="huge"
           onPress={submit}
           loading={busy}
-          disabled={busy || (otpStage && otp.length !== 6)}
+          disabled={busy || (otpStage && (otp.length !== 6 || isExpired))}
         />
 
         <Modal visible={cameraOpen} animationType="slide" onRequestClose={() => setCameraOpen(false)}>
@@ -505,4 +549,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   shutter: { width: 76, height: 76, borderRadius: 38, borderWidth: 5, borderColor: '#fff', backgroundColor: 'rgba(255,255,255,0.25)' },
+  timerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(245,198,35,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,198,35,0.25)',
+    alignSelf: 'center',
+  },
+  timerText: {
+    color: colors.primary,
+    fontSize: font.label,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  expiredBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.3)',
+    alignSelf: 'center',
+  },
+  expiredText: {
+    color: colors.danger,
+    fontSize: font.label,
+    fontWeight: '700',
+  },
 });
