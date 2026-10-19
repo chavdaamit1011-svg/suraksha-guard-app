@@ -6,13 +6,19 @@ let socket: Socket | null = null;
 export function getSocket(): Socket {
   if (!socket) {
     socket = io(SOCKET_URL, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       autoConnect: true,
       reconnection: true,
-      reconnectionDelay: 2000,
+      reconnectionDelay: 1000,
     });
   }
   return socket;
+}
+
+/** Register this guard on socket so direct alarms and wake audits route instantly */
+export function registerGuard(guardId: string) {
+  if (!guardId) return;
+  getSocket().emit('register-guard', guardId);
 }
 
 /** Join the duty room so the client's live-tracking view receives this guard's fixes. */

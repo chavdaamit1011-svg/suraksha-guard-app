@@ -77,12 +77,18 @@ export default function AppLayout() {
   useEffect(() => {
     const open = (data: any) => {
       if (!data) return;
-      if (data?.type !== 'wake_check' && data?.event !== 'wake_check') return;
+      const isWakeType =
+        data?.type === 'wake_check' ||
+        data?.event === 'wake_check' ||
+        data?.kind === 'WAKE_CHECK' ||
+        data?.kind === 'wake-check' ||
+        data?.action === 'wake_check';
+      if (!isWakeType) return;
       if (data.guardId && currentGuardId && String(data.guardId) !== String(currentGuardId)) return;
       const q = new URLSearchParams({ prompt: '1' });
       if (data.wakeId) q.set('wakeId', String(data.wakeId));
       if (data.ackWindowSec) q.set('ackWindowSec', String(data.ackWindowSec));
-      if (data.selfieRequired) q.set('selfie', '1');
+      if (data.selfieRequired !== false) q.set('selfie', '1');
       if (data.attempt) q.set('attempt', String(data.attempt));
       router.push(`/wake?${q.toString()}` as any);
     };
@@ -97,18 +103,29 @@ export default function AppLayout() {
     let socketOff: (() => void) | null = null;
     try {
       const s = getSocket();
+      if (currentGuardId) {
+        s.emit('register-guard', currentGuardId);
+      }
+      const onConnect = () => {
+        if (currentGuardId) s.emit('register-guard', currentGuardId);
+      };
+      s.on('connect', onConnect);
       const onWake = (payload: any) => open(payload);
       s.on('wake_check', onWake);
-      socketOff = () => s.off('wake_check', onWake);
+      s.on('wake-check-trigger', onWake);
+      socketOff = () => {
+        s.off('connect', onConnect);
+        s.off('wake_check', onWake);
+        s.off('wake-check-trigger', onWake);
+      };
     } catch {}
 
     const unsubNotif = onNotification((payload: any) => {
-      if (payload?.type === 'wake_check' || payload?.kind === 'WAKE_CHECK') open(payload);
+      open(payload);
     });
 
     let lastHandledWakeId = '';
-    const unsubDuty = useDuty.subscribe((state) => {
-      const p = state.bundle?.wakePrompt;
+    const checkPrompt = (p: any) => {
       if (p?.wakeId && p.wakeId !== lastHandledWakeId) {
         lastHandledWakeId = p.wakeId;
         open({
@@ -118,6 +135,13 @@ export default function AppLayout() {
           ackWindowSec: p.ackWindowSec || 120,
         });
       }
+    };
+
+    // Check immediately on mount
+    checkPrompt(useDuty.getState().bundle?.wakePrompt);
+
+    const unsubDuty = useDuty.subscribe((state) => {
+      checkPrompt(state.bundle?.wakePrompt);
     });
 
     return () => {

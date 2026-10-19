@@ -7,7 +7,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Muted, Screen } from '@/components/ui';
 import { useT } from '@/i18n';
@@ -130,6 +130,7 @@ export default function Wake() {
             respondedMs: missed ? undefined : respondedMs,
             lat,
             lng,
+            selfieUrl: selfieUri,
           }),
         }).catch(() => {});
 
@@ -204,13 +205,40 @@ export default function Wake() {
 
       let selfieUri: string | undefined = undefined;
       try {
-        const shot = await cam.current?.takePictureAsync({ quality: 0.5, skipProcessing: true });
-        if (shot?.uri) {
-          const c = await ImageManipulator.manipulateAsync(shot.uri, [{ resize: { width: 640 } }], {
-            compress: 0.5,
-            format: ImageManipulator.SaveFormat.JPEG,
-          });
-          selfieUri = c.uri;
+        const shot = await cam.current?.takePictureAsync({
+          quality: 0.5,
+          skipProcessing: true,
+          base64: true,
+        });
+        const sourceUri = shot?.uri;
+        if (sourceUri) {
+          const c = await ImageManipulator.manipulateAsync(
+            sourceUri,
+            [{ resize: { width: 480 } }],
+            {
+              compress: 0.45,
+              format: ImageManipulator.SaveFormat.JPEG,
+              base64: true,
+            }
+          );
+          if (c.base64) {
+            selfieUri = `data:image/jpeg;base64,${c.base64}`;
+          } else if (Platform.OS === 'web' && (c.uri?.startsWith('blob:') || sourceUri.startsWith('blob:'))) {
+            try {
+              const blobRes = await fetch(c.uri || sourceUri);
+              const blobData = await blobRes.blob();
+              selfieUri = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = () => resolve('');
+                reader.readAsDataURL(blobData);
+              });
+            } catch {
+              selfieUri = c.uri || sourceUri;
+            }
+          } else {
+            selfieUri = c.uri || sourceUri;
+          }
         }
       } catch (camErr) {
         console.warn('Camera snap error, continuing with GPS location:', camErr);
