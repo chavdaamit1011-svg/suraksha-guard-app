@@ -5,7 +5,8 @@ import { AppState, Platform, View } from 'react-native';
 import { SosButton } from '@/components/SosButton';
 import { api } from '@/lib/api';
 import { API_BASE_URL } from '@/config';
-import { getLaunchNotificationData, onNotificationResponse } from '@/lib/notifications';
+import { getLaunchNotificationData, onNotificationReceived, onNotificationResponse } from '@/lib/notifications';
+import { getSocket, onNotification } from '@/lib/socket';
 import { flush } from '@/lib/queue';
 import { quickFix } from '@/lib/location';
 import { guardId, useAuth } from '@/store/auth';
@@ -75,7 +76,9 @@ export default function AppLayout() {
    */
   useEffect(() => {
     const open = (data: any) => {
-      if (data?.type !== 'wake_check') return;
+      if (!data) return;
+      if (data?.type !== 'wake_check' && data?.event !== 'wake_check') return;
+      if (data.guardId && currentGuardId && String(data.guardId) !== String(currentGuardId)) return;
       const q = new URLSearchParams({ prompt: '1' });
       if (data.wakeId) q.set('wakeId', String(data.wakeId));
       if (data.ackWindowSec) q.set('ackWindowSec', String(data.ackWindowSec));
@@ -88,8 +91,43 @@ export default function AppLayout() {
       if (data) open(data);
     });
 
-    return onNotificationResponse(open);
-  }, [router]);
+    const unsubResponse = onNotificationResponse(open);
+    const unsubReceived = onNotificationReceived(open);
+
+    let socketOff: (() => void) | null = null;
+    try {
+      const s = getSocket();
+      const onWake = (payload: any) => open(payload);
+      s.on('wake_check', onWake);
+      socketOff = () => s.off('wake_check', onWake);
+    } catch {}
+
+    const unsubNotif = onNotification((payload: any) => {
+      if (payload?.type === 'wake_check' || payload?.kind === 'WAKE_CHECK') open(payload);
+    });
+
+    let lastHandledWakeId = '';
+    const unsubDuty = useDuty.subscribe((state) => {
+      const p = state.bundle?.wakePrompt;
+      if (p?.wakeId && p.wakeId !== lastHandledWakeId) {
+        lastHandledWakeId = p.wakeId;
+        open({
+          type: 'wake_check',
+          wakeId: p.wakeId,
+          selfieRequired: p.selfieRequired ?? true,
+          ackWindowSec: p.ackWindowSec || 120,
+        });
+      }
+    });
+
+    return () => {
+      unsubResponse();
+      unsubReceived();
+      socketOff?.();
+      unsubNotif();
+      unsubDuty();
+    };
+  }, [router, currentGuardId]);
 
   // Bundle polling + the one-second countdown tick, both paused when backgrounded.
   useEffect(() => {

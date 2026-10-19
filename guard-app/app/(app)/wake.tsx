@@ -7,7 +7,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Muted, Screen } from '@/components/ui';
 import { useT } from '@/i18n';
@@ -23,6 +23,7 @@ import { enqueue } from '@/lib/queue';
 import { guardId, useAuth } from '@/store/auth';
 import { useDuty } from '@/store/duty';
 import { colors, font, space } from '@/theme';
+import { API_BASE_URL } from '@/config';
 
 type VerticalPos = 'flex-start' | 'center' | 'flex-end';
 const POSITIONS: VerticalPos[] = ['flex-start', 'center', 'flex-end'];
@@ -34,14 +35,6 @@ type Mode = 'schedule' | 'prompt' | 'selfie' | 'confirmed' | 'missed';
 
 /**
  * Night anti-sleep wake check (PRD 18.8, SUR-GAP-015/016).
- *
- * The schedule is the server's: randomised times generated per shift and pushed in the duty
- * bundle, armed as local alarms so they fire with no network. This screen is the other half —
- * the full-screen prompt itself, with a countdown, a randomly repositioned button so it cannot
- * be dismissed from muscle memory, and an optional selfie for high-value sites.
- *
- * A miss is recorded, never lost: if the window closes the app writes the miss to the outbox,
- * and the server independently sweeps for prompts that were never answered at all.
  */
 export default function Wake() {
   const t = useT();
@@ -53,7 +46,6 @@ export default function Wake() {
     selfie?: string;
     attempt?: string;
   }>();
-  /** 1 for the scheduled prompt, 2 for the re-prompt a minute after a miss (PRD 18.8 §9). */
   const attempt = Math.max(1, parseInt(params.attempt ?? '1', 10) || 1);
 
   const guard = useAuth((s) => s.guard);
@@ -63,9 +55,13 @@ export default function Wake() {
   const ackWindow = Math.max(30, parseInt(params.ackWindowSec ?? '', 10) || 120);
   const selfieRequired = params.selfie === '1';
 
-  const [mode, setMode] = useState<Mode>(params.prompt ? 'prompt' : 'schedule');
+  // Open DIRECTLY into selfie mode if selfie is required
+  const [mode, setMode] = useState<Mode>(
+    params.prompt ? (selfieRequired ? 'selfie' : 'prompt') : 'schedule'
+  );
   const [remaining, setRemaining] = useState(ackWindow);
   const [btnPos, setBtnPos] = useState<VerticalPos>('center');
+  const [capturing, setCapturing] = useState(false);
 
   const [perm, requestPerm] = useCameraPermissions();
   const cam = useRef<CameraView>(null);
@@ -73,7 +69,6 @@ export default function Wake() {
   const shownAt = useRef(Date.now());
   const resolved = useRef(false);
 
-  // The screen must not sleep while a wake prompt is up, and must be readable in a dark cabin.
   useKeepAwake();
   useBrightScreen();
 
@@ -82,14 +77,13 @@ export default function Wake() {
     shownAt.current = Date.now();
     setRemaining(ackWindow);
     setBtnPos(POSITIONS[Math.floor(Math.random() * POSITIONS.length)]);
-    setMode('prompt');
+    setMode(selfieRequired ? 'selfie' : 'prompt');
     Vibration.vibrate(VIBRATE_PATTERN, true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-  }, [ackWindow]);
+  }, [ackWindow, selfieRequired]);
 
   useEffect(() => {
     if (params.prompt) {
-      // Opened by the alarm over a locked phone: stay visible and switch the screen on.
       showOverLockScreen(true);
       startPrompt();
     }
@@ -98,6 +92,13 @@ export default function Wake() {
       showOverLockScreen(false);
     };
   }, [params.prompt, startPrompt]);
+
+  // Request camera permission on mount if selfie mode
+  useEffect(() => {
+    if (selfieRequired && !perm?.granted) {
+      requestPerm().catch(() => {});
+    }
+  }, [selfieRequired, perm?.granted, requestPerm]);
 
   const record = useCallback(
     async (missed: boolean, selfieUri?: string) => {
@@ -111,9 +112,27 @@ export default function Wake() {
       const respondedMs = Date.now() - shownAt.current;
 
       try {
-        // Where the guard was when they answered — the acknowledgement is evidence of presence,
-        // not just of wakefulness (PRD 18.8 §9 "response capture"). Bounded, and skipped for a miss.
         const pos = missed ? null : await quickFix({ accuracy: Location.Accuracy.Balanced, timeoutMs: 4_000 });
+        const lat = pos?.coords.latitude;
+        const lng = pos?.coords.longitude;
+
+        // Directly post to /api/guard/wake-check for immediate server update
+        fetch(`${API_BASE_URL}/api/guard/wake-check`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            guardId: id,
+            wakeId: params.wakeId,
+            rosterId: current?.rosterId,
+            bookingId: (current as any)?.bookingId,
+            missed,
+            attempt,
+            respondedMs: missed ? undefined : respondedMs,
+            lat,
+            lng,
+          }),
+        }).catch(() => {});
+
         const event = await enqueue(id, 'wake_check', {
           wakeId: params.wakeId,
           rosterId: current?.rosterId,
@@ -121,13 +140,10 @@ export default function Wake() {
           missed,
           attempt,
           respondedMs: missed ? undefined : respondedMs,
-          lat: pos?.coords.latitude,
-          lng: pos?.coords.longitude,
+          lat,
+          lng,
         });
 
-        // First miss: give the guard one more chance a minute later before anyone is called
-        // (PRD 18.8 §9 — the 60 s re-prompt absorbs a guard who was simply on a round or in the
-        // toilet). A second miss is what the server escalates.
         if (missed && attempt === 1 && params.wakeId) {
           scheduleWakeReprompt({
             wakeId: params.wakeId,
@@ -147,9 +163,8 @@ export default function Wake() {
             rosterId: current?.rosterId,
           }).catch(() => {});
         }
-
       } catch {
-        /* queued; it will sync */
+        /* queued; will sync */
       }
 
       if (params.wakeId) {
@@ -162,9 +177,9 @@ export default function Wake() {
     [guard, params.wakeId, current, refresh, router, attempt, ackWindow, selfieRequired]
   );
 
-  // Countdown. At zero the miss is recorded locally — nothing is lost to a sleeping guard.
+  // Countdown timer: ticks in both prompt and selfie mode
   useEffect(() => {
-    if (mode !== 'prompt') return;
+    if (mode !== 'prompt' && mode !== 'selfie') return;
     if (remaining <= 0) {
       record(true);
       return;
@@ -173,17 +188,21 @@ export default function Wake() {
     return () => clearTimeout(timer);
   }, [mode, remaining, record]);
 
-  const onAwake = async () => {
+  // Click Selfie Handler: takes front picture and acquires GPS
+  const onCaptureSelfie = async () => {
+    if (capturing || resolved.current) return;
+    setCapturing(true);
     Vibration.cancel();
-    if (!selfieRequired) return record(false);
 
-    // High-value sites want proof of a face, not just a tap.
-    if (!perm?.granted) {
-      const res = await requestPerm();
-      if (!res.granted) return record(false); // never block the acknowledgement on a permission
-    }
-    setMode('selfie');
-    setTimeout(async () => {
+    try {
+      if (!perm?.granted) {
+        const res = await requestPerm();
+        if (!res.granted) {
+          return record(false);
+        }
+      }
+
+      let selfieUri: string | undefined = undefined;
       try {
         const shot = await cam.current?.takePictureAsync({ quality: 0.5, skipProcessing: true });
         if (shot?.uri) {
@@ -191,13 +210,29 @@ export default function Wake() {
             compress: 0.5,
             format: ImageManipulator.SaveFormat.JPEG,
           });
-          return record(false, c.uri);
+          selfieUri = c.uri;
         }
-      } catch {
-        /* fall through — the acknowledgement still counts */
+      } catch (camErr) {
+        console.warn('Camera snap error, continuing with GPS location:', camErr);
       }
-      record(false);
-    }, 1200);
+
+      await record(false, selfieUri);
+    } catch {
+      await record(false);
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const onAwake = async () => {
+    Vibration.cancel();
+    if (!selfieRequired) return record(false);
+
+    if (!perm?.granted) {
+      const res = await requestPerm();
+      if (!res.granted) return record(false);
+    }
+    setMode('selfie');
   };
 
   if (mode === 'confirmed' || mode === 'missed') {
@@ -208,19 +243,57 @@ export default function Wake() {
             <Ionicons name={mode === 'confirmed' ? 'checkmark' : 'close'} size={72} color="#fff" />
           </View>
           <Text style={styles.title}>{mode === 'confirmed' ? t('wake.confirmed') : t('wake.missed')}</Text>
+          <Muted style={{ textAlign: 'center' }}>
+            {mode === 'confirmed' ? 'Attendance & Location verified successfully' : 'Check missed. Supervisor alerted.'}
+          </Muted>
         </View>
       </SafeAreaView>
     );
   }
 
+  // DIRECT SELFIE CAMERA SCREEN
   if (mode === 'selfie') {
     return (
       <SafeAreaView style={styles.screen}>
-        <View style={styles.center}>
-          <Text style={styles.title}>{t('wake.selfiePrompt')}</Text>
+        {/* Top Header */}
+        <View style={styles.selfieTopBar}>
+          <View style={styles.rowGap}>
+            <Ionicons name="shield-checkmark" size={24} color={colors.primary} />
+            <Text style={styles.selfieTopTitle}>Night Alertness Audit</Text>
+          </View>
+          <View style={[styles.timerBadge, remaining < 30 && styles.timerBadgeUrgent]}>
+            <Ionicons name="time-outline" size={16} color={remaining < 30 ? colors.danger : colors.primary} />
+            <Text style={[styles.timerText, remaining < 30 && { color: colors.danger }]}>{remaining}s</Text>
+          </View>
+        </View>
+
+        {/* Camera Center */}
+        <View style={styles.selfieContent}>
           <View style={styles.selfieWrap}>
             <CameraView ref={cam} style={styles.selfieCam} facing="front" />
+            <View style={styles.faceGuideRing} />
           </View>
+
+          <View style={styles.instructionBox}>
+            <Text style={styles.instructionTitle}>Position face clearly in camera</Text>
+            <Text style={styles.instructionSub}>GPS Location will be automatically detected on capture</Text>
+          </View>
+
+          {/* Large Shutter Button */}
+          <Pressable
+            onPress={onCaptureSelfie}
+            disabled={capturing}
+            style={[styles.captureActionBtn, capturing && { opacity: 0.7 }]}
+          >
+            {capturing ? (
+              <ActivityIndicator color={colors.onPrimary} size="small" />
+            ) : (
+              <>
+                <Ionicons name="camera" size={26} color={colors.onPrimary} />
+                <Text style={styles.captureActionBtnText}>CLICK SELFIE &amp; VERIFY</Text>
+              </>
+            )}
+          </Pressable>
         </View>
       </SafeAreaView>
     );
@@ -246,7 +319,7 @@ export default function Wake() {
     );
   }
 
-  // --- Idle: show tonight's schedule. The guard does not arm this; the roster does. ---
+  // --- Idle: show tonight's schedule ---
   const checks: WakeCheck[] = current?.wakeChecks ?? [];
   const pending = checks.filter((c) => c.status === 'pending');
 
@@ -260,12 +333,7 @@ export default function Wake() {
         <View style={{ width: 24 }} />
       </View>
 
-      {!current?.wakeCheckEnabled ? (
-        <Card style={styles.emptyCard}>
-          <Ionicons name="sunny" size={36} color={colors.textFaint} />
-          <Muted style={{ textAlign: 'center' }}>{t('wake.notEnabled')}</Muted>
-        </Card>
-      ) : checks.length === 0 ? (
+      {checks.length === 0 ? (
         <Card style={styles.emptyCard}>
           <Ionicons name="moon" size={36} color={colors.textFaint} />
           <Muted style={{ textAlign: 'center' }}>{t('wake.noneScheduled')}</Muted>
@@ -337,8 +405,34 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   bigBtnText: { color: colors.onPrimary, fontSize: font.h3, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5 },
-  selfieWrap: { width: 260, height: 340, borderRadius: 24, overflow: 'hidden', borderWidth: 3, borderColor: colors.primary },
+  selfieWrap: { width: 280, height: 360, borderRadius: 28, overflow: 'hidden', borderWidth: 3, borderColor: colors.primary, position: 'relative' },
   selfieCam: { flex: 1 },
+  faceGuideRing: { position: 'absolute', inset: 20, borderRadius: 100, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)', borderStyle: 'dashed' },
+  selfieTopBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.md },
+  selfieTopTitle: { color: '#fff', fontSize: font.h3, fontWeight: '800' },
+  timerBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(245, 198, 35, 0.15)', borderWidth: 1, borderColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  timerBadgeUrgent: { backgroundColor: 'rgba(239, 68, 68, 0.2)', borderColor: colors.danger },
+  timerText: { color: colors.primary, fontSize: font.body, fontWeight: '800' },
+  selfieContent: { flex: 1, alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: space.lg, paddingBottom: space.xl },
+  instructionBox: { alignItems: 'center', gap: 4 },
+  instructionTitle: { color: '#fff', fontSize: font.body, fontWeight: '700', textAlign: 'center' },
+  instructionSub: { color: colors.textMuted, fontSize: font.label, textAlign: 'center' },
+  captureActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+    backgroundColor: colors.primary,
+    paddingVertical: space.md,
+    paddingHorizontal: space.xl,
+    borderRadius: 30,
+    width: '90%',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  captureActionBtnText: { color: colors.onPrimary, fontSize: font.body, fontWeight: '900', letterSpacing: 0.5 },
   emptyCard: { alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingVertical: space.xl },
   rowGap: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

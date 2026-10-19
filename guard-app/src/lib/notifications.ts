@@ -73,6 +73,19 @@ export function onNotificationResponse(handler: (data: any) => void): () => void
   }
 }
 
+/** Subscribe to notifications arriving while the app is foregrounded. */
+export function onNotificationReceived(handler: (data: any) => void): () => void {
+  if (!Notifications) return () => {};
+  try {
+    const sub = Notifications.addNotificationReceivedListener((notification) =>
+      handler(notification.request.content.data)
+    );
+    return () => sub.remove();
+  } catch {
+    return () => {};
+  }
+}
+
 /** The notification that cold-started the app, if any (a tap from a killed process). */
 export async function getLaunchNotificationData(): Promise<any | null> {
   if (!Notifications) return null;

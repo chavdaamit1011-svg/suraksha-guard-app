@@ -249,6 +249,12 @@ export type DutyBundle = {
   } | null;
   recentAttendance: any[];
   notifications: any[];
+  wakePrompt?: {
+    wakeId: string;
+    selfieRequired?: boolean;
+    ackWindowSec?: number;
+    siteName?: string;
+  } | null;
 };
 
 export type ContractOffer = {
