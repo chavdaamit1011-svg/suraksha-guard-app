@@ -203,7 +203,7 @@ export async function armWakeChecks(wakeChecks: WakeCheck[]): Promise<number> {
         ...wakeText(false),
         url: wakeUrl({ wakeId, ackWindowSec: w.ackWindowSec, selfieRequired: w.selfieRequired }),
         // Stop ringing when the answer window closes; the re-prompt takes over from there.
-        timeoutMs: (w.ackWindowSec ?? 120) * 1000,
+        timeoutMs: (w.ackWindowSec ?? 60) * 1000,
       });
       if (ok) {
         armed[wakeId] = `${NATIVE}${wakeId}`;

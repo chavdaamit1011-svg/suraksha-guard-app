@@ -24,6 +24,7 @@ import { guardId, useAuth } from '@/store/auth';
 import { useDuty } from '@/store/duty';
 import { colors, font, space } from '@/theme';
 import { API_BASE_URL } from '@/config';
+import { isAuditCompleted, markAuditCompleted } from '@/lib/auditTracker';
 
 type VerticalPos = 'flex-start' | 'center' | 'flex-end';
 const POSITIONS: VerticalPos[] = ['flex-start', 'center', 'flex-end'];
@@ -52,7 +53,8 @@ export default function Wake() {
   const current = useDuty((s) => s.current);
   const refresh = useDuty((s) => s.refresh);
 
-  const ackWindow = Math.max(30, parseInt(params.ackWindowSec ?? '', 10) || 120);
+  const rawWindow = parseInt(params.ackWindowSec ?? '', 10);
+  const ackWindow = rawWindow > 0 && rawWindow <= 60 ? rawWindow : 60;
   const selfieRequired = params.selfie === '1';
 
   // Open DIRECTLY into selfie mode if selfie is required

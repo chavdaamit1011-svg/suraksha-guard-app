@@ -12,6 +12,7 @@ import { quickFix } from '@/lib/location';
 import { guardId, useAuth } from '@/store/auth';
 import { useDuty } from '@/store/duty';
 import { colors } from '@/theme';
+import { isAuditAlreadyHandled, markAuditAsHandled } from '@/lib/auditTracker';
 
 const BUNDLE_POLL_MS = 3_500; // Fast real-time live polling for instant orders, contracts, queries and notifications
 const TICK_MS = 1_000; // the countdown does
@@ -85,9 +86,19 @@ export default function AppLayout() {
         data?.action === 'wake_check';
       if (!isWakeType) return;
       if (data.guardId && currentGuardId && String(data.guardId) !== String(currentGuardId)) return;
+
+      const wakeId = data.wakeId ? String(data.wakeId) : '';
+      if (wakeId && isAuditAlreadyHandled(wakeId)) {
+        // Already handled or completed for this audit check; do NOT re-open on refresh!
+        return;
+      }
+      if (wakeId) {
+        markAuditAsHandled(wakeId);
+      }
+
       const q = new URLSearchParams({ prompt: '1' });
       if (data.wakeId) q.set('wakeId', String(data.wakeId));
-      if (data.ackWindowSec) q.set('ackWindowSec', String(data.ackWindowSec));
+      q.set('ackWindowSec', String(data.ackWindowSec || 60));
       if (data.selfieRequired !== false) q.set('selfie', '1');
       if (data.attempt) q.set('attempt', String(data.attempt));
       router.push(`/wake?${q.toString()}` as any);
@@ -126,13 +137,17 @@ export default function AppLayout() {
 
     let lastHandledWakeId = '';
     const checkPrompt = (p: any) => {
-      if (p?.wakeId && p.wakeId !== lastHandledWakeId) {
-        lastHandledWakeId = p.wakeId;
+      if (p?.wakeId) {
+        const wid = String(p.wakeId);
+        if (wid === lastHandledWakeId || isAuditAlreadyHandled(wid)) {
+          return;
+        }
+        lastHandledWakeId = wid;
         open({
           type: 'wake_check',
-          wakeId: p.wakeId,
+          wakeId: wid,
           selfieRequired: p.selfieRequired ?? true,
-          ackWindowSec: p.ackWindowSec || 120,
+          ackWindowSec: p.ackWindowSec || 60,
         });
       }
     };
